@@ -265,12 +265,6 @@ def is_auth_required(response):
 
 
 def load_auth(base_url):
-    token = os.environ.get("FABAO_TOKEN", "").strip()
-    if token:
-        token_base_url = os.environ.get("FABAO_TOKEN_BASE_URL", DEFAULT_BASE_URL).strip()
-        if service_origin(base_url) != service_origin(resolve_base_url(token_base_url)):
-            return ""
-        return token
     auth_path = Path.home() / ".fabao" / "auth.json"
     auth = {}
     if auth_path.exists():
