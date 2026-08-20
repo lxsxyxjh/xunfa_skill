@@ -50,13 +50,13 @@ PDF 和图片 OCR 按以下顺序执行：
 2. 用户未配置凭据时，使用服务端本地 PaddleOCR。
 3. 用户百度 OCR 调用失败时，自动使用服务端本地 PaddleOCR，并返回降级原因和警告。
 
-服务端不使用平台公共百度密钥。用户通过网站账户设置管理自己的百度 OCR 凭据：
+服务端不使用平台公共百度密钥。用户可通过网站账户设置或在 Agent 对话中提供自己的百度 OCR 凭据：
 
 - `GET /user/ocrCredential`：只查询脱敏末四位和验证状态。
-- `PUT /user/ocrCredential`：由网站设置页保存并验证，密钥加密存储。
+- `PUT /user/ocrCredential`：验证后保存，密钥加密存储。
 - `DELETE /user/ocrCredential`：删除凭据并清理该用户的 token 与失败状态。
 
-Agent 不调用写入或删除凭据的接口，不收集用户密钥。
+当用户在对话或接口参数中提供完整的 API Key 和 Secret Key 时，先调用 `GET /user/ocrCredential` 查询当前账户。仅在 `data.hasKey=false` 时调用 `PUT /user/ocrCredential` 传入密钥；接口会先验证百度凭据，成功后写入数据库，失败时不保存。已有凭据时不覆盖。
 
 ## 故障处理
 
