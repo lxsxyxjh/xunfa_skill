@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
+import getpass
 import hashlib
+from http.cookies import SimpleCookie
 import json
 import mimetypes
 import os
 import re
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,6 +27,7 @@ UPLOAD_TIMEOUT_SECONDS = 300
 LAW_TIMEOUT_SECONDS = 60
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 AUTH_MESSAGES = ("请先登录", "请重新登录")
+DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 ARTICLE_PATTERN = re.compile(r"第[〇零一二三四五六七八九十百千万两\d０-９]{1,12}条(?:之[〇零一二三四五六七八九十百千万两\d０-９]{1,6})?")
 LAW_PATTERN = re.compile(r"《([^》\r\n]{2,80})》")
 ID_PATTERN = re.compile(r"(?:公民身份号码|身份证(?:号码|号)?)[：: \t]*([0-9Xx]+)(?![0-9A-Za-z])")
@@ -110,15 +114,49 @@ class FabaoClient:
     def __init__(self, base_url, token):
         self.base_url = base_url.rstrip("/")
         self.token = token
+        self.last_headers = None
 
-    def send_json(self, path, body):
+    def require_token(self):
+        if not self.token:
+            raise ReviewError("auth_missing", "没有可用登录态", AUTH_REQUIRED_EXIT)
+
+    def send_json(self, path, body, method="POST", timeout=LAW_TIMEOUT_SECONDS):
         payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
         headers = {"Content-Type": "application/json; charset=utf-8", "Accept": "application/json"}
-        return self.send(path, payload, headers, LAW_TIMEOUT_SECONDS)
+        return self.send(path, payload, headers, timeout, method)
+
+    def send_form(self, path, values, timeout=LAW_TIMEOUT_SECONDS):
+        payload = urllib.parse.urlencode(values, doseq=True).encode("utf-8")
+        headers = {"Content-Type": "application/x-www-form-urlencoded; charset=utf-8", "Accept": "application/json"}
+        return self.send(path, payload, headers, timeout)
+
+    def send_binary(self, path, body, headers, timeout, method="POST"):
+        request_headers = dict(headers)
+        if self.token:
+            request_headers["Cookie"] = "fabao=" + self.token
+        request = urllib.request.Request(self.base_url + path, data=body, headers=request_headers, method=method)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                self.last_headers = response.headers
+                raw = response.read()
+        except urllib.error.HTTPError as error:
+            raw = error.read()
+            result = parse_json_response(raw)
+            if is_auth_required(result):
+                raise ReviewError("auth_required", str(result.get("msg", "请先登录")), AUTH_REQUIRED_EXIT) from error
+            message = result.get("msg") if isinstance(result, dict) else raw.decode("utf-8", errors="replace")
+            raise ReviewError("request_failed", sanitize_error_message(message or error), REQUEST_FAILED_EXIT) from error
+        except urllib.error.URLError as error:
+            raise ReviewError("request_failed", sanitize_error_message(error.reason), REQUEST_FAILED_EXIT) from error
+        except TimeoutError as error:
+            raise ReviewError("request_failed", "接口请求超时", REQUEST_FAILED_EXIT) from error
+        result = parse_json_response(raw)
+        if is_auth_required(result):
+            raise ReviewError("auth_required", str(result.get("msg", "请先登录")), AUTH_REQUIRED_EXIT)
+        return raw, self.last_headers
 
     def upload_and_parse(self, file_paths):
-        if not self.token:
-            raise ReviewError("auth_required", "没有可用 token", AUTH_REQUIRED_EXIT)
+        self.require_token()
         if not file_paths:
             raise ReviewError("input_failed", "至少需要一个输入文件", INPUT_FAILED_EXIT)
         with tempfile.TemporaryDirectory(prefix="fabao-upload-") as temporary_directory:
@@ -144,25 +182,22 @@ class FabaoClient:
     def search_laws_batch(self, queries):
         if not queries:
             return []
-        if not self.token:
-            raise ReviewError("auth_required", "没有可用 token", AUTH_REQUIRED_EXIT)
+        self.require_token()
         response = self.send_json("/laws/searchByLawBatch", queries)
         return require_success(response)
 
-    def send(self, path, body, headers, timeout):
+    def send(self, path, body, headers, timeout, method="POST"):
         request_headers = dict(headers)
         if self.token:
             request_headers["Cookie"] = "fabao=" + self.token
-        request = urllib.request.Request(self.base_url + path, data=body, headers=request_headers, method="POST")
+        request = urllib.request.Request(self.base_url + path, data=body, headers=request_headers, method=method)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
+                self.last_headers = response.headers
                 raw = response.read()
         except urllib.error.HTTPError as error:
             raw = error.read()
-            try:
-                result = json.loads(raw.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                result = None
+            result = parse_json_response(raw)
             if is_auth_required(result):
                 raise ReviewError("auth_required", str(result.get("msg", "请先登录")), AUTH_REQUIRED_EXIT) from error
             if isinstance(result, dict):
@@ -174,10 +209,9 @@ class FabaoClient:
             raise ReviewError("request_failed", sanitize_error_message(error.reason), REQUEST_FAILED_EXIT) from error
         except TimeoutError as error:
             raise ReviewError("request_failed", "接口请求超时", REQUEST_FAILED_EXIT) from error
-        try:
-            result = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ReviewError("request_failed", "接口没有返回有效 JSON", REQUEST_FAILED_EXIT) from error
+        result = parse_json_response(raw)
+        if result is None:
+            raise ReviewError("request_failed", "接口没有返回有效 JSON", REQUEST_FAILED_EXIT)
         if is_auth_required(result):
             raise ReviewError("auth_required", str(result.get("msg", "请先登录")), AUTH_REQUIRED_EXIT)
         return result
@@ -249,6 +283,13 @@ def build_multipart_body(file_paths, boundary, display_names, expected_sha256):
     return MultipartBody(file_parts, suffix_bytes)
 
 
+def parse_json_response(raw):
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
 def require_success(response):
     if not isinstance(response, dict):
         raise ReviewError("request_failed", "接口响应格式错误", REQUEST_FAILED_EXIT)
@@ -280,6 +321,44 @@ def load_auth(base_url):
         if service_origin(base_url) != service_origin(resolve_base_url(auth_base_url)):
             return ""
     return token
+
+
+def save_auth(base_url, token, username):
+    value = str(token or "").strip()
+    if not value:
+        raise ReviewError("request_failed", "登录响应未包含登录态", REQUEST_FAILED_EXIT)
+    auth_dir = Path.home() / ".fabao"
+    auth_dir.mkdir(parents=True, exist_ok=True)
+    auth_path = auth_dir / "auth.json"
+    payload = {
+        "baseUrl": str(base_url).rstrip("/"),
+        "token": value,
+        "username": str(username or "微信登录"),
+        "loginTime": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=auth_dir, delete=False) as temporary_file:
+            temporary_file.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+            temporary_path = Path(temporary_file.name)
+        os.chmod(temporary_path, 0o600)
+        os.replace(temporary_path, auth_path)
+    except OSError as error:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink(missing_ok=True)
+        raise ReviewError("request_failed", "无法保存登录态", REQUEST_FAILED_EXIT) from error
+
+
+def extract_cookie_token(headers):
+    if headers is None:
+        return ""
+    cookie = SimpleCookie()
+    for value in headers.get_all("Set-Cookie", []):
+        cookie.load(value)
+    item = cookie.get("fabao")
+    return item.value.strip() if item is not None else ""
 
 
 def resolve_base_url(value):
@@ -807,8 +886,203 @@ def apply_command(args):
     return {"status": "ok", "output": str(output_path), "applied": len(replacements)}
 
 
+def write_binary_new(path, content):
+    try:
+        with path.open("xb") as output:
+            output.write(content)
+    except FileExistsError as error:
+        raise ReviewError("input_failed", "输出文件已存在", INPUT_FAILED_EXIT) from error
+    except OSError as error:
+        raise ReviewError("input_failed", "无法写入输出文件", INPUT_FAILED_EXIT) from error
+
+
+def load_input_object(value, field_name):
+    data = read_json(Path(value).resolve())
+    if not isinstance(data, dict):
+        raise ReviewError("input_failed", field_name + " 必须是 JSON 对象", INPUT_FAILED_EXIT)
+    return data
+
+
+def create_authenticated_client(args):
+    base_url = resolve_base_url(args.base_url)
+    return FabaoClient(base_url, load_auth(base_url))
+
+
+def parse_command(args):
+    file_paths = [Path(value).resolve() for value in args.files]
+    if not file_paths:
+        raise ReviewError("input_failed", "至少需要一个输入文件", INPUT_FAILED_EXIT)
+    for file_path in file_paths:
+        if not file_path.is_file():
+            raise ReviewError("input_failed", "输入文件不存在", INPUT_FAILED_EXIT)
+        if file_path.stat().st_size == 0:
+            raise ReviewError("input_failed", "输入文件不能为空", INPUT_FAILED_EXIT)
+    output_path = resolve_output_path(args.output, file_paths)
+    parsed_items, source_hashes = create_authenticated_client(args).upload_and_parse(file_paths)
+    result = []
+    for file_path, parsed, source_hash in zip(file_paths, parsed_items, source_hashes):
+        result.append({"sourcePath": str(file_path), "sourceSha256": source_hash, "result": parsed})
+    write_json(output_path, {"status": "ok", "files": result})
+    return {"status": "ok", "output": str(output_path), "files": len(result)}
+
+
+def laws_query_command(args, path):
+    body = load_input_object(args.input, "input")
+    output_path = resolve_output_path(args.output, [Path(args.input).resolve()])
+    client = create_authenticated_client(args)
+    client.require_token()
+    response = client.send_form(path, body)
+    data = require_success(response)
+    write_json(output_path, {"status": "ok", "data": data})
+    return {"status": "ok", "output": str(output_path)}
+
+
+def laws_exact_command(args):
+    return laws_query_command(args, "/laws/searchByLaw")
+
+
+def laws_search_command(args):
+    return laws_query_command(args, "/laws/search")
+
+
+def laws_id_command(args):
+    return laws_query_command(args, "/laws/getLawText")
+
+
+def ocr_status_command(args):
+    output_path = resolve_output_path(args.output, [])
+    client = create_authenticated_client(args)
+    client.require_token()
+    response = client.send("/user/ocrCredential", None, {"Accept": "application/json"}, LAW_TIMEOUT_SECONDS, "GET")
+    write_json(output_path, {"status": "ok", "data": require_success(response)})
+    return {"status": "ok", "output": str(output_path)}
+
+
+def read_credentials_from_stdin():
+    try:
+        credentials = json.loads(sys.stdin.read())
+    except json.JSONDecodeError as error:
+        raise ReviewError("input_failed", "标准输入必须是 OCR 凭据 JSON", INPUT_FAILED_EXIT) from error
+    if not isinstance(credentials, dict):
+        raise ReviewError("input_failed", "OCR 凭据必须是 JSON 对象", INPUT_FAILED_EXIT)
+    api_key = str(credentials.get("apiKey", "")).strip()
+    secret_key = str(credentials.get("secretKey", "")).strip()
+    if not api_key or not secret_key:
+        raise ReviewError("input_failed", "OCR 凭据缺少 apiKey 或 secretKey", INPUT_FAILED_EXIT)
+    return {"apiKey": api_key, "secretKey": secret_key}
+
+
+def ocr_set_command(args):
+    output_path = resolve_output_path(args.output, [])
+    client = create_authenticated_client(args)
+    client.require_token()
+    status = require_success(client.send("/user/ocrCredential", None, {"Accept": "application/json"}, LAW_TIMEOUT_SECONDS, "GET"))
+    if isinstance(status, dict) and status.get("hasKey"):
+        write_json(output_path, {"status": "ok", "data": status, "saved": False})
+        return {"status": "ok", "output": str(output_path), "saved": False}
+    saved = require_success(client.send_json("/user/ocrCredential", read_credentials_from_stdin(), "PUT"))
+    write_json(output_path, {"status": "ok", "data": saved, "saved": True})
+    return {"status": "ok", "output": str(output_path), "saved": True}
+
+
+def ocr_delete_command(args):
+    output_path = resolve_output_path(args.output, [])
+    client = create_authenticated_client(args)
+    client.require_token()
+    response = client.send("/user/ocrCredential", None, {"Accept": "application/json"}, LAW_TIMEOUT_SECONDS, "DELETE")
+    write_json(output_path, {"status": "ok", "data": require_success(response)})
+    return {"status": "ok", "output": str(output_path)}
+
+
+def docx_command(args):
+    text_path = Path(args.text_file).resolve()
+    if not text_path.is_file():
+        raise ReviewError("input_failed", "文书文本文件不存在", INPUT_FAILED_EXIT)
+    text = read_text_exact(text_path)
+    if not text.strip():
+        raise ReviewError("input_failed", "文书正文不能为空", INPUT_FAILED_EXIT)
+    protected_paths = [text_path]
+    settings = {}
+    if args.settings:
+        settings_path = Path(args.settings).resolve()
+        protected_paths.append(settings_path)
+        settings = load_input_object(args.settings, "settings")
+    output_path = resolve_output_path(args.output, protected_paths)
+    if output_path.suffix.lower() != ".docx":
+        raise ReviewError("input_failed", "输出文件必须使用 .docx 后缀", INPUT_FAILED_EXIT)
+    client = create_authenticated_client(args)
+    client.require_token()
+    payload = {"text": text, "settings": settings}
+    if args.file_name:
+        payload["fileName"] = args.file_name
+    content, headers = client.send_binary("/file/exportLegalDocx", json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                                          {"Content-Type": "application/json; charset=utf-8", "Accept": DOCX_CONTENT_TYPE},
+                                          UPLOAD_TIMEOUT_SECONDS)
+    content_type = str(headers.get("Content-Type", "")).lower() if headers else ""
+    if not content_type.startswith(DOCX_CONTENT_TYPE) or not content.startswith(b"PK"):
+        raise ReviewError("request_failed", "文书生成接口未返回 DOCX 文件", REQUEST_FAILED_EXIT)
+    write_binary_new(output_path, content)
+    return {"status": "ok", "output": str(output_path), "bytes": len(content)}
+
+
+def auth_qr_start_command(args):
+    output_path = resolve_output_path(args.output, [])
+    base_url = resolve_base_url(args.base_url)
+    client = FabaoClient(base_url, "")
+    data = require_success(client.send_json("/wxLoginQrcode", {}))
+    if not isinstance(data, dict) or not data.get("uuid") or not data.get("qrUrl"):
+        raise ReviewError("request_failed", "二维码接口没有返回完整登录信息", REQUEST_FAILED_EXIT)
+    qr_url = str(data["qrUrl"])
+    parsed = urllib.parse.urlparse(qr_url)
+    if service_origin(qr_url) != service_origin(base_url):
+        raise ReviewError("request_failed", "二维码地址与服务地址不一致", REQUEST_FAILED_EXIT)
+    content, headers = client.send_binary(parsed.path + (("?" + parsed.query) if parsed.query else ""), None,
+                                          {"Accept": "image/png"}, LAW_TIMEOUT_SECONDS, "GET")
+    content_type = str(headers.get("Content-Type", "")).lower() if headers else ""
+    if not content_type.startswith("image/png") or not content.startswith(b"\x89PNG"):
+        raise ReviewError("request_failed", "二维码接口未返回 PNG 图片", REQUEST_FAILED_EXIT)
+    write_binary_new(output_path, content)
+    return {"status": "ok", "uuid": str(data["uuid"]), "qrPath": str(output_path)}
+
+
+def auth_qr_wait_command(args):
+    uuid_value = str(args.uuid or "").strip()
+    if not uuid_value:
+        raise ReviewError("input_failed", "缺少二维码 uuid", INPUT_FAILED_EXIT)
+    base_url = resolve_base_url(args.base_url)
+    client = FabaoClient(base_url, "")
+    deadline = time.monotonic() + args.timeout
+    while time.monotonic() < deadline:
+        response = client.send_form("/checkWXLogin", {"uuid": uuid_value})
+        if str(response.get("code")) == "1":
+            data = response.get("data") if isinstance(response.get("data"), dict) else {}
+            save_auth(base_url, extract_cookie_token(client.last_headers), data.get("userna"))
+            return {"status": "ok", "username": str(data.get("userna") or "微信登录")}
+        if str(response.get("msg", "")) != "未登录":
+            raise ReviewError("request_failed", sanitize_error_message(response.get("msg")), REQUEST_FAILED_EXIT)
+        time.sleep(args.interval)
+    raise ReviewError("auth_required", "等待扫码超时", AUTH_REQUIRED_EXIT)
+
+
+def auth_password_command(args):
+    username = str(args.username or "").strip()
+    if not username:
+        raise ReviewError("input_failed", "缺少登录账号", INPUT_FAILED_EXIT)
+    password = getpass.getpass("密码: ") if args.password_prompt else sys.stdin.readline().rstrip("\r\n")
+    if not password:
+        raise ReviewError("input_failed", "密码不能为空", INPUT_FAILED_EXIT)
+    base_url = resolve_base_url(args.base_url)
+    client = FabaoClient(base_url, "")
+    password_md5 = hashlib.md5(password.encode("utf-8")).hexdigest()
+    response = client.send_form("/doLogin", {"userna": username, "passwd": password_md5})
+    data = require_success(response)
+    response_username = data.get("userna") if isinstance(data, dict) else username
+    save_auth(base_url, extract_cookie_token(client.last_headers), response_username or username)
+    return {"status": "ok", "username": str(response_username or username)}
+
+
 def build_parser():
-    parser = argparse.ArgumentParser(description="法律文书快速检查辅助脚本")
+    parser = argparse.ArgumentParser(description="法保科技法律工作流客户端")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     prepare = subparsers.add_parser("prepare", help="解析文书并生成检查上下文")
@@ -826,6 +1100,63 @@ def build_parser():
     laws.add_argument("--output", required=True, help="批量法条结果 JSON 输出路径")
     laws.add_argument("--base-url", help="用户明确指定的服务地址")
     laws.set_defaults(handler=laws_command)
+
+    parse = subparsers.add_parser("parse", help="解析一个或多个法律文件")
+    parse.add_argument("--files", nargs="+", required=True, help="需要解析的文件绝对路径")
+    parse.add_argument("--output", required=True, help="解析结果 JSON 输出路径")
+    parse.add_argument("--base-url", help="用户明确指定的服务地址")
+    parse.set_defaults(handler=parse_command)
+
+    for command_name, command_help, handler in (
+            ("law-exact", "按完整法名查询法律或法条", laws_exact_command),
+            ("law-search", "按关键词发现候选法律", laws_search_command),
+            ("law-id", "按可信 lawId 查询法律或法条", laws_id_command)):
+        law_command = subparsers.add_parser(command_name, help=command_help)
+        law_command.add_argument("--input", required=True, help="请求 JSON 文件路径")
+        law_command.add_argument("--output", required=True, help="结果 JSON 输出路径")
+        law_command.add_argument("--base-url", help="用户明确指定的服务地址")
+        law_command.set_defaults(handler=handler)
+
+    docx = subparsers.add_parser("docx", help="将法律文书纯文本导出为 DOCX")
+    docx.add_argument("--text-file", required=True, help="UTF-8 文书纯文本路径")
+    docx.add_argument("--settings", help="格式设置 JSON 文件路径")
+    docx.add_argument("--file-name", help="文书下载文件名")
+    docx.add_argument("--output", required=True, help="新建 DOCX 输出路径")
+    docx.add_argument("--base-url", help="用户明确指定的服务地址")
+    docx.set_defaults(handler=docx_command)
+
+    ocr_status = subparsers.add_parser("ocr-status", help="查询当前账户 OCR 配置状态")
+    ocr_status.add_argument("--output", required=True, help="结果 JSON 输出路径")
+    ocr_status.add_argument("--base-url", help="用户明确指定的服务地址")
+    ocr_status.set_defaults(handler=ocr_status_command)
+
+    ocr_set = subparsers.add_parser("ocr-set", help="从标准输入读取 JSON 并保存 OCR 凭据")
+    ocr_set.add_argument("--output", required=True, help="结果 JSON 输出路径")
+    ocr_set.add_argument("--base-url", help="用户明确指定的服务地址")
+    ocr_set.set_defaults(handler=ocr_set_command)
+
+    ocr_delete = subparsers.add_parser("ocr-delete", help="删除当前账户 OCR 凭据")
+    ocr_delete.add_argument("--output", required=True, help="结果 JSON 输出路径")
+    ocr_delete.add_argument("--base-url", help="用户明确指定的服务地址")
+    ocr_delete.set_defaults(handler=ocr_delete_command)
+
+    qr_start = subparsers.add_parser("auth-qr-start", help="生成微信登录二维码 PNG")
+    qr_start.add_argument("--output", required=True, help="新建二维码 PNG 输出路径")
+    qr_start.add_argument("--base-url", help="用户明确指定的服务地址")
+    qr_start.set_defaults(handler=auth_qr_start_command)
+
+    qr_wait = subparsers.add_parser("auth-qr-wait", help="等待扫码登录并保存登录态")
+    qr_wait.add_argument("--uuid", required=True, help="auth-qr-start 返回的 uuid")
+    qr_wait.add_argument("--interval", type=int, default=5, choices=range(1, 61), metavar="1-60", help="轮询间隔秒数")
+    qr_wait.add_argument("--timeout", type=int, default=300, choices=range(5, 601), metavar="5-600", help="最长等待秒数")
+    qr_wait.add_argument("--base-url", help="用户明确指定的服务地址")
+    qr_wait.set_defaults(handler=auth_qr_wait_command)
+
+    password = subparsers.add_parser("auth-password", help="使用账号密码登录并保存登录态")
+    password.add_argument("--username", required=True, help="登录账号")
+    password.add_argument("--password-prompt", action="store_true", help="在终端安全读取密码")
+    password.add_argument("--base-url", help="用户明确指定的服务地址")
+    password.set_defaults(handler=auth_password_command)
 
     apply_parser = subparsers.add_parser("apply", help="只替换确认错误并输出完整修正版")
     apply_parser.add_argument("--context", required=True, help="prepare 生成的检查上下文")

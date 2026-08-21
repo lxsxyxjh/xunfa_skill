@@ -16,40 +16,40 @@
 ## 强制执行路径
 
 1. 用户直接粘贴文本时，将原文不改动地保存为 UTF-8 临时文本；doc、docx、pdf 或图片直接使用原文件。
-2. 调用技能目录中的 `scripts/legal_review.py prepare`；同一任务有多个文件时优先一次传入全部文件，减少重复解析。
+2. 调用技能目录中的 `scripts/fabao.py prepare`；同一任务有多个文件时优先一次传入全部文件，减少重复解析。
 3. 读取上下文的 `documents`。每项含 `source`、`text`、`textSha256`、`citations` 和 `ruleIssues`。逐份阅读全文，复核错别字、病句、结构和序号，并补充脚本未命中的明确问题与非标准法条引用。
 4. 有法条引用时，合并全部文书的引用后调用一次 `laws` 批量核验；没有引用时跳过。结合核验结果检查事实冲突、数值核算和论述逻辑，去重后输出确定错误。
 
-不得使用 curl 或自行拼接 multipart 请求。`prepare` 成功后以返回的 `text` 为检查依据，不重复解析同一文件。脚本返回 `auth_required` 时读取 [认证与安全](authentication.md)，登录成功后重试原命令；其他失败直接报告实际错误，不猜测内容或法条。
+`prepare` 成功后以返回的 `text` 为检查依据，不重复解析同一文件。客户端返回认证状态时按[认证与安全](authentication.md)登录后重试原命令；其他失败直接报告实际错误。
 
 不创建工作日志、过程报告或复盘文件。平台自动产生的内部日志不属于本技能输出。中间文件放在操作系统的当前任务私有临时目录，不放共享项目目录。为等待用户确认修正版，可以暂时保留检查上下文；用户拒绝修改或修正版交付完成后立即删除临时文本、上下文、法条结果和问题 JSON，不删除用户原文件。
 
 ## 脚本命令
 
-从技能根目录执行命令；当前目录不在技能根目录时使用 `legal_review.py` 的绝对路径。输入和输出都传已经确认的绝对路径，输出路径必须是尚不存在的新文件，不得与原文件、上下文或问题 JSON 相同。Windows 不使用虚构的 `/tmp` 路径，优先使用 `python`。
+从技能根目录执行命令；当前目录不在技能根目录时使用 `fabao.py` 的绝对路径。输入和输出都传已经确认的绝对路径，输出路径使用尚不存在的新文件。Windows 使用 `python` 和当前任务私有临时目录。
 
 一个或多个法律文件：
 
 ```bash
-python scripts/legal_review.py prepare --files "<文件1绝对路径>" "<文件2绝对路径>" --output "<临时目录>/review-context.json"
+python scripts/fabao.py prepare --files "<文件1绝对路径>" "<文件2绝对路径>" --output "<临时目录>/review-context.json"
 ```
 
 用户粘贴文本：
 
 ```bash
-python scripts/legal_review.py prepare --text-file "<UTF-8临时文本>" --output "<临时目录>/review-context.json"
+python scripts/fabao.py prepare --text-file "<UTF-8临时文本>" --output "<临时目录>/review-context.json"
 ```
 
 一次批量查询所有法条：
 
 ```bash
-python scripts/legal_review.py laws --context "<临时目录>/review-context.json" --output "<临时目录>/law-results.json"
+python scripts/fabao.py laws --context "<临时目录>/review-context.json" --output "<临时目录>/law-results.json"
 ```
 
 如果第一遍对自动引用做了任何增加、删除或法名、条号修正，将最终引用列表保存为 JSON 后执行：
 
 ```bash
-python scripts/legal_review.py laws --queries "<临时目录>/law-queries.json" --output "<临时目录>/law-results.json"
+python scripts/fabao.py laws --queries "<临时目录>/law-queries.json" --output "<临时目录>/law-results.json"
 ```
 
 `--queries` 与 `--context` 二选一。只有自动引用完全未调整时才使用 `--context`；只要增加、删除或修正过任何一项，就必须使用保存最终列表的 `--queries`。脚本负责最终去重；不要先查询自动提取项，也不要为每条法条分别运行命令。每项必须同时包含 `lawName` 和 `articleNumber`，批量检查不请求整部法律全文。
@@ -142,7 +142,7 @@ python scripts/legal_review.py laws --queries "<临时目录>/law-queries.json" 
 用户确认后，只为具有确定替换值的问题生成修改数组；每个确认修改项必须显式包含 `"apply":true`、`"replacementStatus":"ready"` 和 `replacement`，再执行：
 
 ```bash
-python scripts/legal_review.py apply --context "<临时目录>/review-context.json" --document-number <文书序号> --issues "<临时目录>/accepted-issues.json" --output "<输出路径>/修改后完整版本.txt"
+python scripts/fabao.py apply --context "<临时目录>/review-context.json" --document-number <文书序号> --issues "<临时目录>/accepted-issues.json" --output "<输出路径>/修改后完整版本.txt"
 ```
 
 生成 `accepted-issues.json` 时必须使用如下对象结构，其中 `textSha256` 原样复制自 `review-context.json`；每项修改必须替换至少一个已存在字符，缺字或缺标点通过替换相邻的已存在文本表达，不使用空位置插入。

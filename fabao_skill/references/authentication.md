@@ -1,71 +1,37 @@
 # 认证与安全
 
-## 服务地址与响应
+法保客户端使用用户目录 `.fabao/auth.json` 保存当前服务地址的登录态。`scripts/fabao.py` 负责读取、校验和更新此文件；`loginTime` 仅记录登录时间，业务命令的实际响应决定当前登录态是否可用。
 
-默认服务地址是 `https://fabaotu.com`。只有用户明确指定本机开发环境时，才使用 `FABAO_BASE_URL` 覆盖；仅允许 `localhost`、`127.0.0.1` 或 `::1`，其他远程主机和正式服务的明文 HTTP 会被拒绝。
-
-除文书生成接口外，业务响应统一为：
-
-```json
-{"code":"...","msg":"...","data":null}
-```
-
-只有 `code=="1"` 表示成功，其他值均为失败，原因读取 `msg`。
-
-## 判断登录状态
-
-业务接口使用 Cookie `fabao=<token>`。只读取用户目录 `.fabao/auth.json` 的 `token` 字段：
-
-1. 文件存在、JSON 合法、`token` 非空，且 `baseUrl` 与本次服务地址的协议、主机和端口一致：视为已有登录记录，直接携带该 token 调用当前正式业务接口。
-2. 文件不存在、token 为空、JSON 无效或服务地址不一致：视为没有登录记录，直接执行登录。
-
-本地有 token 记录时不做预检或探测；是否仍然有效，以当前正式业务接口的实际响应为准。
-
-必须使用 JSON 解析器读取 `auth.json`，并按以下流程处理：
-
-1. 有本地 token 记录：直接执行原业务请求。
-2. 没有本地 token 记录：直接登录，再执行原业务请求。
-3. 原业务请求返回 `code!="1"` 且 `msg` 包含“请先登录”或“请重新登录”：登录并只重试原业务请求一次。
-4. 其他响应：直接报告原业务接口返回的实际错误，不登录、不重试，也不调用其他接口。
+默认服务地址为 `https://fabaotu.com`。用户明确指定本机开发服务时，命令可传 `--base-url`；客户端只接受正式 HTTPS 服务和本机回环地址。
 
 ## 微信扫码登录
 
-1. `POST /wxLoginQrcode`，成功响应包含 `data.uuid` 和 `data.qrUrl`。
-2. 使用当前 Agent 能够展示图片的方式向用户显示 `qrUrl`，提示用户使用微信扫码并选择完整服务；快照模式不完成注册或登录。
-3. 每 5 秒 `POST /checkWXLogin`，以表单传递 `uuid=<uuid>`。
-4. 未扫码时返回 `code=="0"`、`msg=未登录`；扫码成功时返回 `code=="1"`、`data.userna`，token 位于同一次响应的 `Set-Cookie` 中。
-5. 扫码结果保留 5 分钟；遇到“请求过于频繁”时把轮询间隔增加到 10 秒。
+在当前任务私有临时目录创建二维码：
 
-二维码也可以通过 `GET /wxLoginQrcode/<uuid>.png` 获取。未注册用户完成授权后会自动注册；登录成功后提醒用户在网站账户设置中完善账户安全设置。
+```bash
+python scripts/fabao.py auth-qr-start --output "<临时目录>/fabao-login.png"
+```
+
+命令返回 `uuid` 与 `qrPath`。展示 `qrPath` 对应图片，请用户使用微信扫码并选择完整服务。随后执行：
+
+```bash
+python scripts/fabao.py auth-qr-wait --uuid "<uuid>"
+```
+
+扫码成功后客户端保存登录态，并返回登录账户名。等待扫码时可按用户实际操作重新运行 `auth-qr-wait`；二维码或扫码结果异常时如实报告命令结果。
 
 ## 账号密码登录
 
-`POST /doLogin`
+终端可交互输入密码时执行：
 
-Content-Type：`application/x-www-form-urlencoded`
-
-- `userna`：账号，必填。
-- `passwd`：用户原始密码按 UTF-8 计算的 MD5 小写十六进制，必填。
-- `device`：浏览器登录不传；移动端登录时传设备标识。
-
-成功时 `code=="1"`，token 位于响应的 `Set-Cookie` 中。密码只用于本次请求，使用后立即丢弃，不写入配置、日志或答复。
-
-## 保存与校验 token
-
-将 token 保存到用户目录 `.fabao/auth.json`，只保存 token，不保存密码：
-
-```json
-{"baseUrl":"https://fabaotu.com","token":"<token>","username":"<账号名>","loginTime":"<当前时间>"}
+```bash
+python scripts/fabao.py auth-password --username "<账号>" --password-prompt
 ```
 
-`username` 优先使用扫码响应的 `data.userna` 或账号密码登录时的账号，无法取得时写“微信登录”。
+客户端在内存中计算登录所需摘要，登录成功后保存登录态。密码不写入文件、输出或命令参数。
 
-登录接口成功并返回新 token 后，即认定登录完成，不再调用任何额外接口检查登录态。不得为确认登录调用法条、文件解析、文书生成或其他业务接口。
+## 任务中的认证处理
 
-安装或登录完成后，不自动执行模拟文书、法条检索、文件解析、脚本或全链路冒烟测试。只有用户明确要求测试，或用户已经提出真实业务任务时，才执行对应任务。
+业务命令返回 `auth_missing` 或 `auth_required` 时，完成上述登录流程，再将原业务命令执行一次。第二次返回的实际结果就是本次任务结果。
 
-## 秘密保护
-
-- 用户直接在对话或接口参数中提供完整的百度 OCR API Key、Secret Key 时，按法律文件解析参考中的流程为当前登录账户完成验证和保存；不追加安全提示。
-- 不在命令输出、日志、生成文档或最终答复中展示 token、密码或密钥。
-- 百度 OCR 凭据可在网站账户设置或 Agent 对话中配置；未配置不是错误，文件解析会自动降级。
+客户端的标准输出、错误输出、生成文件和答复均不包含 token、密码或 OCR 密钥。
