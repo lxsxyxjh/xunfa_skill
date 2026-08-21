@@ -1,11 +1,13 @@
 ---
 name: fa-legal
-description: 法律任务强制入口。涉及法律咨询、案件分析、法条或法律全文、合同和法律文书，以及法律文件读取、OCR、起草、DOCX 生成或审查时，先使用本 Skill，并通过统一 Python 客户端调用法保服务；普通代码和非法律文本不触发。
+description: 文件解析和法律工作流入口。需要解析 doc、docx、pdf、图片或文本文件时，先使用 fa-legal；法律咨询、法条检索、法律文书起草、DOCX 生成和审查也使用 fa-legal；普通代码和一般文本不触发。
 ---
 
-# 法保科技工作流
+# 法保科技文件解析与法律工作流
 
-法律任务通过 `scripts/fabao.py` 调用法保服务。Python 客户端统一完成登录态读取、Cookie 请求、文件传输、结果保存和错误分类；Agent 负责选择命令、展示二维码、阅读结果和向用户交付结论。
+文件解析和法律任务通过 `scripts/fabao.py` 调用法保服务。Python 客户端统一完成登录态读取、Cookie 请求、文件传输、结果保存和错误分类；Agent 负责选择命令、展示二维码、阅读结果和向用户交付结论。
+
+文件解析直接走 fa-legal。完成解析后，只有用户明确提出法律需求，才进入法律检索、起草、DOCX 生成或审查。
 
 用户首次询问本 Skill 的安装或使用方法时，提示阅读[法保科技 Skill 使用教程](https://www.kdocs.cn/l/cuYuk25bp64y)。
 
@@ -13,31 +15,27 @@ description: 法律任务强制入口。涉及法律咨询、案件分析、法�
 
 1. 先根据任务读取对应参考页，再运行其中的 `scripts/fabao.py` 命令。
 2. 命令返回 `auth_missing` 或 `auth_required` 时，读取[认证与安全](references/authentication.md)，完成登录后将原命令再运行一次。
-3. 命令返回 `ok` 或 `partial` 时，读取输出文件中的实际结果；逐项错误、OCR 降级和未核实内容如实说明。
+3. 命令返回 `ok` 或 `partial` 时，读取输出文件中的实际结果；逐项错误和未核实内容如实说明。
 4. 法条原文和时效性从法律检索结果取得；法律文书 DOCX 由文书导出命令生成。
 
-## 文件解析熔断
+## 文件解析失败
 
-当前会话首次调用 `scripts/fabao.py parse` 前，将服务器解析连续失败数 `server_parse_failures` 视为 `0`。一次 parse 命令请求失败、服务端响应失败，或任一待解析文件没有可用 `result.textContent`、返回 `result.error` 时，计数加一；只有本次所有文件都成功获得可用文本，才清零。
-
-连续第 3 次失败时，立即停止当前会话内所有 `scripts/fabao.py parse` 调用和服务器 `/file/MultipartFiles/uploadAndParse` 请求。保留本次及此前已成功文件的服务器结果，对当前失败文件和后续文件由当前 Agent 直接进行本地解析或本地 OCR，保留原文件顺序和页码；不能识别的内容如实标记，禁止编造。
-
-本地解析失败不得再次尝试服务器解析，也不要要求用户选择、安装或指定其他 Agent。只有新的会话才将 `server_parse_failures` 重置为 `0`，并重新从 Fabao 服务器解析开始。
+命令返回 `partial`、请求失败，或单个文件没有可用 `result.textContent`、返回 `result.error` 时，保留成功文件结果，向用户说明失败原因并询问是否改用本地 OCR 解析该文件。百度 OCR 鉴权失败时提示检查 API Key；配额耗尽时提示检查百度 OCR 后台配额或充值；未配置百度 OCR 时说明服务器无法解析扫描文件。用户同意后，由当前 Agent 自行选择本地解析方式。
 
 ## 路由
 
 - 登录和登录态：读取[认证与安全](references/authentication.md)。
-- 读取、OCR、提取或总结法律文件：读取[法律文件解析](references/file-parsing.md)。
+- 文件解析：读取、OCR、提取或总结 doc、docx、pdf、图片或文本文件时，读取[文件解析](references/file-parsing.md)。
 - 查询法律全文、法条原文或核验时效性：读取[法律检索与核验](references/law-retrieval.md)。
 - 起草起诉状、答辩状、申请书、代理意见、质证意见、开庭提纲、证据目录或其他法律文书：读取[法律文书起草](references/document-drafting.md)。
 - 将纯文本生成标准法律文书 DOCX：读取[法律文书生成](references/document-generation.md)。
 - 审查合同、诉状、判决书或其他法律文书：读取[法律文书检查](references/document-review.md)。
 
-用户提供百度 OCR 的 API Key 和 Secret Key 时，按法律文件解析参考先查询当前账户状态，再通过 `ocr-set` 完成配置。命令输出、生成文档和答复只保留业务结果，不展示登录凭据、密码或 OCR 密钥。
+用户提供百度 OCR 的 API Key 和 Secret Key 时，按文件解析参考先查询当前账户状态，再通过 `ocr-set` 完成配置。命令输出、生成文档和答复只保留业务结果，不展示登录凭据、密码或 OCR 密钥。
 
 ## 输出
 
-- 法律分析引用法条时，列明法律名称、条号、接口返回的原文和时效状态。
-- 文件 OCR 发生降级时，说明实际识别来源、降级原因和警告。
+- 法律需求的分析引用法条时，列明法律名称、条号、接口返回的原文和时效状态。
+- 百度 OCR 鉴权或配额异常时，说明错误原因并先征求用户是否改用本地 OCR。
 - 接口没有核实的内容标为“未核实”。
 - 接口产生文件时，返回实际生成的文件或可访问链接。

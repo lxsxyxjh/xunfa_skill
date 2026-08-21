@@ -1,14 +1,14 @@
-# 法律文件解析
+# 文件解析
 
-读取法律 doc、docx、pdf、图片或文本文件时使用本流程。将原文件绝对路径传给客户端：
+读取 doc、docx、pdf、图片或文本文件时使用本流程。将原文件绝对路径传给客户端：
 
 ```bash
 python scripts/fabao.py parse --files "<文件1绝对路径>" "<文件2绝对路径>" --output "<临时目录>/parsed-files.json"
 ```
 
-输出 JSON 的 `files` 按输入顺序保存。每项包含原文件路径、SHA-256 和服务端解析结果；读取 `result.textContent`、`result.error`、`result.ocrProvider`、`result.ocrFallbackReason` 与 `result.ocrWarning`。
+输出 JSON 的 `files` 按输入顺序保存，`status` 为 `ok` 或 `partial`。每项包含原文件路径、SHA-256 和服务端解析结果；读取 `result.textContent`、`result.error` 与 `result.ocrProvider`。
 
-整体命令成功时仍逐项查看 `error`。成功文件可以继续使用，失败文件如实报告原因。
+`partial` 或单项 `error`、空 `textContent` 都表示服务器解析失败。保留成功文件结果，向用户说明失败原因并询问是否改用本地 OCR。用户同意后，由 Agent 自行选择本地解析方式。
 
 ## OCR 配置
 
@@ -34,4 +34,4 @@ python scripts/fabao.py ocr-set --output "<临时目录>/ocr-set.json"
 python scripts/fabao.py ocr-delete --output "<临时目录>/ocr-delete.json"
 ```
 
-PDF 和图片可能返回 `baidu-user`、`paddle-local` 或混合识别结果。出现降级原因或 OCR 警告时，说明实际识别来源、降级原因和对速度、质量的影响。
+PDF 和图片只由用户配置的百度 OCR 在服务器上识别；PDF 也可能包含直接提取的文本页和百度 OCR 页。服务器不提供本机 OCR 兜底。

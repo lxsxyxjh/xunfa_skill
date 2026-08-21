@@ -713,8 +713,6 @@ def prepare_command(args):
                 "path": str(source_path),
                 "sha256": source_sha256,
                 "ocrProvider": parsed.get("ocrProvider"),
-                "ocrFallbackReason": parsed.get("ocrFallbackReason"),
-                "ocrWarning": parsed.get("ocrWarning"),
             }
             documents.append(build_document_context(source, text))
     else:
@@ -920,10 +918,15 @@ def parse_command(args):
     output_path = resolve_output_path(args.output, file_paths)
     parsed_items, source_hashes = create_authenticated_client(args).upload_and_parse(file_paths)
     result = []
+    failed_files = 0
     for file_path, parsed, source_hash in zip(file_paths, parsed_items, source_hashes):
         result.append({"sourcePath": str(file_path), "sourceSha256": source_hash, "result": parsed})
-    write_json(output_path, {"status": "ok", "files": result})
-    return {"status": "ok", "output": str(output_path), "files": len(result)}
+        if (not isinstance(parsed, dict) or parsed.get("error")
+                or not isinstance(parsed.get("textContent"), str) or not parsed["textContent"].strip()):
+            failed_files += 1
+    status = "partial" if failed_files else "ok"
+    write_json(output_path, {"status": status, "files": result, "failedFiles": failed_files})
+    return {"status": status, "output": str(output_path), "files": len(result), "failedFiles": failed_files}
 
 
 def laws_query_command(args, path):
@@ -1082,7 +1085,7 @@ def auth_password_command(args):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description="法保科技法律工作流客户端")
+    parser = argparse.ArgumentParser(description="法保科技文件解析与法律工作流客户端")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     prepare = subparsers.add_parser("prepare", help="解析文书并生成检查上下文")
@@ -1101,7 +1104,7 @@ def build_parser():
     laws.add_argument("--base-url", help="用户明确指定的服务地址")
     laws.set_defaults(handler=laws_command)
 
-    parse = subparsers.add_parser("parse", help="解析一个或多个法律文件")
+    parse = subparsers.add_parser("parse", help="解析一个或多个文件")
     parse.add_argument("--files", nargs="+", required=True, help="需要解析的文件绝对路径")
     parse.add_argument("--output", required=True, help="解析结果 JSON 输出路径")
     parse.add_argument("--base-url", help="用户明确指定的服务地址")

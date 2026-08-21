@@ -60,8 +60,6 @@ python scripts/fabao.py laws --queries "<临时目录>/law-queries.json" --outpu
 
 单个文件解析失败时读取 `itemErrors`，继续检查成功文件。`laws` 返回 `status=partial` 时读取对应 `itemErrors` 并说明未核实项；核验未完成不等于文书无误或存在法条错误。
 
-`source.ocrFallbackReason` 或 `source.ocrWarning` 非空时先向用户简要说明 OCR 降级；这不是文书错误，不计入错误数量。
-
 ## 法条错误
 
 - 逐字比对法名、条号、款、项、正文、数字和标点。
