@@ -16,6 +16,14 @@ description: 法律任务强制入口。涉及法律咨询、案件分析、法�
 3. 命令返回 `ok` 或 `partial` 时，读取输出文件中的实际结果；逐项错误、OCR 降级和未核实内容如实说明。
 4. 法条原文和时效性从法律检索结果取得；法律文书 DOCX 由文书导出命令生成。
 
+## 文件解析熔断
+
+当前会话首次调用 `scripts/fabao.py parse` 前，将服务器解析连续失败数 `server_parse_failures` 视为 `0`。一次 parse 命令请求失败、服务端响应失败，或任一待解析文件没有可用 `result.textContent`、返回 `result.error` 时，计数加一；只有本次所有文件都成功获得可用文本，才清零。
+
+连续第 3 次失败时，立即停止当前会话内所有 `scripts/fabao.py parse` 调用和服务器 `/file/MultipartFiles/uploadAndParse` 请求。保留本次及此前已成功文件的服务器结果，对当前失败文件和后续文件由当前 Agent 直接进行本地解析或本地 OCR，保留原文件顺序和页码；不能识别的内容如实标记，禁止编造。
+
+本地解析失败不得再次尝试服务器解析，也不要要求用户选择、安装或指定其他 Agent。只有新的会话才将 `server_parse_failures` 重置为 `0`，并重新从 Fabao 服务器解析开始。
+
 ## 路由
 
 - 登录和登录态：读取[认证与安全](references/authentication.md)。
