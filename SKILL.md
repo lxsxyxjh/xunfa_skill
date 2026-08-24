@@ -31,7 +31,7 @@ metadata:
 - 查询法律全文、法条原文或核验时效性：读取[法律检索与核验](references/law-retrieval.md)。
 - 起草起诉状、答辩状、申请书、代理意见、质证意见、开庭提纲、证据目录或其他法律文书：读取[法律文书起草](references/document-drafting.md)。
 - 将纯文本生成标准法律文书 DOCX：读取[法律文书生成](references/document-generation.md)。
-- 审查合同、诉状、判决书或其他法律文书：读取[法律文书检查](references/document-review.md)。
+- 审查合同、诉状、判决书或其他法律文书：读取[法律文书检查](references/document-review.md)。该页已包含 `prepare` 解析和 `laws` 核验流程。
 
 用户提供百度 OCR 的 API Key 和 Secret Key 时，按文件解析参考先查询当前账户状态，再通过 `ocr-set` 完成配置。输出使用接口返回的业务结果。
 
