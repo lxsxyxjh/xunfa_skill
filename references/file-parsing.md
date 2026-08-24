@@ -28,7 +28,7 @@ python scripts/xunfa.py ocr-status --output "<临时目录>/ocr-status.json"
 python scripts/xunfa.py ocr-set --output "<临时目录>/ocr-set.json"
 ```
 
-客户端从标准输入读取凭据并只输出脱敏后的服务端结果。账户已有密钥时，`ocr-set` 返回当前状态，不覆盖现有配置。删除配置使用：
+客户端从标准输入读取凭据并输出服务端状态。账户已有密钥时，`ocr-set` 返回当前状态，不覆盖现有配置。删除配置使用：
 
 ```bash
 python scripts/xunfa.py ocr-delete --output "<临时目录>/ocr-delete.json"

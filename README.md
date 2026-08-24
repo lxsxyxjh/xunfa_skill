@@ -58,7 +58,7 @@ python scripts/xunfa.py auth-password --username "<账号>" --password-prompt
 | 解析 doc、docx、pdf、图片或文本文件 | `parse --files "<绝对路径>" --output "<临时目录>/parsed-files.json"` | [文件解析](references/file-parsing.md) |
 | 批量核验已知法条 | `laws --queries "<临时目录>/law-queries.json" --output "<临时目录>/law-results.json"` | [法律检索与核验](references/law-retrieval.md) |
 | 按完整法名查询法条 | `law-exact --input "<请求.json>" --output "<结果.json>"` | [法律检索与核验](references/law-retrieval.md) |
-| 将法律文书纯文本导出为 DOCX | `docx --text-file "<文书.txt>" --output "<输出.docx>"` | [法律文书生成](references/document-generation.md) |
+| 将法律文书纯文本导出为 DOCX | `<文书纯文本> \| python scripts/xunfa.py docx --output "<输出.docx>"` | [法律文书生成](references/document-generation.md) |
 | 生成法律文书检查上下文 | `prepare --files "<绝对路径>" --output "<临时目录>/review-context.json"` | [法律文书检查](references/document-review.md) |
 | 根据已确认的问题生成修正版文本 | `apply --context "<检查上下文.json>" --document-number 1 --issues "<确认问题.json>" --output "<修正版.txt>"` | [法律文书检查](references/document-review.md) |
 
@@ -77,6 +77,20 @@ python scripts/xunfa.py auth-password --username "<账号>" --password-prompt
 | `request_failed` | 服务请求未完成或响应格式异常 | 如实报告错误，不把未核验内容当作结果 |
 
 文书检查的 `prepare` 结果中的 `ruleIssues` 是候选问题，提交给用户前仍应结合原文复核。法条引用以检索结果中的法名、条号、原文和时效状态为准。
+
+## 每日版本检查与手动更新
+
+每个自然日首次执行实际业务命令时，客户端会在最多 3 秒内静默检查一次远端版本。检查结果不会影响业务处理；只有本地版本可以安全快进到上游版本时，成功 JSON 才会包含 `updateNotice`。没有更新、网络不可用、Git 不可用、本地领先或历史分叉时均不提示。
+
+Agent 读取到 `updateNotice` 后，应先交付本次业务结果，再附带其中的更新提示。客户端不会自动更新 Skill。
+
+用户明确要求“更新寻法”时，先在 Skill 根目录检查工作区状态并刷新远端；仅在工作区干净且可快进时执行：
+
+```powershell
+git pull --ff-only
+```
+
+存在未提交改动、本地领先或历史分叉时停止更新并报告原因。不要使用 `reset`、`rebase`、`stash`、强制覆盖或自动提交。
 
 ## 维护与校验
 

@@ -57,4 +57,4 @@ python scripts/xunfa.py law-id --input "<临时目录>/law-id.json" --output "<�
 
 引用现行法时使用名称精确且 `statusText=有效` 的结果。逐字核对法名、条号、款、项、正文、数字和标点；检索结果没有返回的内容标为“未核实”。
 
-主题检索的 `textList` 只用于发现候选法律。确定完整法名后，再运行 `law-exact` 取得可引用的原文与时效状态。
+主题检索的 `textList` 用于发现候选法律；确定完整法名后，运行 `law-exact` 取得可引用的原文与时效状态。

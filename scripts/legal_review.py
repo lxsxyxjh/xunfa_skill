@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -22,6 +23,7 @@ OFFICIAL_SERVICE_HOST = urllib.parse.urlparse(OFFICIAL_SERVICE_URL).hostname
 DEFAULT_BASE_URL = OFFICIAL_SERVICE_URL
 SESSION_COOKIE_NAME = "fabao"
 AUTH_DIRECTORY_NAME = ".xunfa"
+UPDATE_CHECK_FILE_NAME = "update-check.json"
 BASE_URL_ENV_NAME = "XUNFA_BASE_URL"
 OCR_CREDENTIAL_PATH = "/user/ocrCredential"
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
@@ -30,9 +32,11 @@ REQUEST_FAILED_EXIT = 4
 INPUT_FAILED_EXIT = 5
 UPLOAD_TIMEOUT_SECONDS = 300
 LAW_TIMEOUT_SECONDS = 60
+UPDATE_FETCH_TIMEOUT_SECONDS = 3
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 AUTH_MESSAGES = ("请先登录", "请重新登录")
 DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+UPDATE_NOTICE_MESSAGE = "检测到寻法技能有新版本，回复“更新寻法”即可拉取。"
 ARTICLE_PATTERN = re.compile(r"第[〇零一二三四五六七八九十百千万两\d０-９]{1,12}条(?:之[〇零一二三四五六七八九十百千万两\d０-９]{1,6})?")
 LAW_PATTERN = re.compile(r"《([^》\r\n]{2,80})》")
 ID_PATTERN = re.compile(r"(?:公民身份号码|身份证(?:号码|号)?)[：: \t]*([0-9Xx]+)(?![0-9A-Za-z])")
@@ -62,14 +66,10 @@ ARTICLE_QUERY_PATTERN = re.compile(
     r"^第?([〇零一二三四五六七八九十百千万两\d０-９]{1,12})条?(?:之([〇零一二三四五六七八九十百千万两\d０-９]{1,6}))?$"
 )
 FULL_WIDTH_DIGIT_TABLE = str.maketrans("０１２３４５６７８９", "0123456789")
-SENSITIVE_NUMBER_PATTERN = re.compile(r"(?<!\d)\d{11,19}(?!\d)")
 
 
 def sanitize_error_message(value):
     message = str(value or "接口请求失败").replace("\r", " ").replace("\n", " ")
-    message = SENSITIVE_NUMBER_PATTERN.sub(
-        lambda match: match.group(0)[:3] + "*" * (len(match.group(0)) - 7) + match.group(0)[-4:], message
-    )
     return message[:300]
 
 
@@ -356,6 +356,80 @@ def save_auth(base_url, token, username):
         raise ReviewError("request_failed", "无法保存登录态", REQUEST_FAILED_EXIT) from error
 
 
+def get_update_check_path():
+    return Path.home() / AUTH_DIRECTORY_NAME / UPDATE_CHECK_FILE_NAME
+
+
+def read_update_check_date(path):
+    try:
+        data = json.loads(read_text_exact(path).lstrip("\ufeff"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    value = data.get("date")
+    return value if isinstance(value, str) else None
+
+
+def write_update_check_date(path, date_value):
+    temporary_path = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as temporary_file:
+            temporary_file.write(json.dumps({"date": date_value}, ensure_ascii=False, separators=(",", ":")))
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+            temporary_path = Path(temporary_file.name)
+        os.replace(temporary_path, path)
+        return True
+    except OSError:
+        return False
+    finally:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink(missing_ok=True)
+
+
+def run_git_command(command, skill_directory, timeout=UPDATE_FETCH_TIMEOUT_SECONDS):
+    return subprocess.run(
+        command,
+        cwd=str(skill_directory),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def check_daily_update(skill_directory=None, state_path=None, today=None, command_runner=None):
+    date_value = today or datetime.date.today().isoformat()
+    marker_path = Path(state_path) if state_path else get_update_check_path()
+    if read_update_check_date(marker_path) == date_value:
+        return None
+    if not write_update_check_date(marker_path, date_value):
+        return None
+    runner = command_runner or run_git_command
+    root_directory = Path(skill_directory) if skill_directory else Path(__file__).resolve().parent.parent
+    try:
+        fetched = runner(["git", "fetch", "--quiet"], root_directory)
+        if fetched.returncode != 0:
+            return None
+        local = runner(["git", "rev-parse", "HEAD"], root_directory)
+        upstream = runner(["git", "rev-parse", "@{u}"], root_directory)
+        if local.returncode != 0 or upstream.returncode != 0:
+            return None
+        local_commit = local.stdout.strip()
+        upstream_commit = upstream.stdout.strip()
+        if not local_commit or not upstream_commit or local_commit == upstream_commit:
+            return None
+        can_fast_forward = runner(["git", "merge-base", "--is-ancestor", "HEAD", "@{u}"], root_directory)
+        if can_fast_forward.returncode != 0:
+            return None
+        return {"available": True, "message": UPDATE_NOTICE_MESSAGE}
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def extract_cookie_token(headers):
     if headers is None:
         return ""
@@ -481,13 +555,13 @@ def extract_citations(text):
     return list(citations.values())
 
 
-def make_issue(category, start, end, original, problem, replacement=None, status="needs_input", display_original=None):
+def make_issue(category, start, end, original, problem, replacement=None, status="needs_input"):
     return {
         "category": category,
         "start": start,
         "end": end,
         "original": original,
-        "displayOriginal": display_original if display_original is not None else original,
+        "displayOriginal": original,
         "problem": problem,
         "replacement": replacement,
         "replacementStatus": status,
@@ -528,12 +602,6 @@ def validate_uscc(value):
     if normalized[-1] != expected:
         return "统一社会信用代码校验码错误"
     return None
-
-
-def mask_value(value, left=6, right=4):
-    if len(value) <= left + right:
-        return "*" * len(value)
-    return value[:left] + "*" * (len(value) - left - right) + value[-right:]
 
 
 def parse_chinese_number(value):
@@ -584,8 +652,7 @@ def collect_rule_issues(text):
             continue
         problem = validate_id_card(value)
         if problem:
-            issues.append(make_issue("事实错误", match.start(1), match.end(1), value, problem,
-                                     display_original=mask_value(value)))
+            issues.append(make_issue("事实错误", match.start(1), match.end(1), value, problem))
 
     for match in USCC_PATTERN.finditer(text):
         value = match.group(1).upper()
@@ -593,8 +660,7 @@ def collect_rule_issues(text):
             continue
         problem = validate_uscc(value)
         if problem:
-            issues.append(make_issue("事实错误", match.start(1), match.end(1), match.group(1), problem,
-                                     display_original=mask_value(value, 4, 4)))
+            issues.append(make_issue("事实错误", match.start(1), match.end(1), match.group(1), problem))
 
     for match in MOBILE_PATTERN.finditer(text):
         raw = match.group(1).rstrip(" \t\u3000-")
@@ -610,7 +676,7 @@ def collect_rule_issues(text):
         grouping_valid = re.fullmatch(r"\d{11}|\d{3}[ \t\u3000-]\d{4}[ \t\u3000-]\d{4}", raw)
         if not grouping_valid or not re.fullmatch(r"1[3-9]\d{9}", value):
             issues.append(make_issue("事实错误", match.start(1), match.start(1) + len(raw), raw,
-                                     "手机号码格式不符合规则", display_original=mask_value(value, 3, 4)))
+                                     "手机号码格式不符合规则"))
 
     for match in BANK_CARD_PATTERN.finditer(text):
         raw = match.group(1).rstrip(" \t\u3000-")
@@ -621,7 +687,7 @@ def collect_rule_issues(text):
         )
         if not value.isdigit() or not 12 <= len(value) <= 19 or not grouping_valid:
             issues.append(make_issue("事实错误", match.start(1), match.start(1) + len(raw), raw,
-                                     "银行卡号格式不符合规则", display_original=mask_value(value, 4, 4)))
+                                     "银行卡号格式不符合规则"))
 
     for match in DATE_PATTERN.finditer(text):
         try:
@@ -1003,13 +1069,10 @@ def ocr_delete_command(args):
 
 
 def docx_command(args):
-    text_path = Path(args.text_file).resolve()
-    if not text_path.is_file():
-        raise ReviewError("input_failed", "文书文本文件不存在", INPUT_FAILED_EXIT)
-    text = read_text_exact(text_path)
+    text = sys.stdin.read()
     if not text.strip():
         raise ReviewError("input_failed", "文书正文不能为空", INPUT_FAILED_EXIT)
-    protected_paths = [text_path]
+    protected_paths = []
     settings = {}
     if args.settings:
         settings_path = Path(args.settings).resolve()
@@ -1126,7 +1189,6 @@ def build_parser():
         law_command.set_defaults(handler=handler)
 
     docx = subparsers.add_parser("docx", help="将法律文书纯文本导出为 DOCX")
-    docx.add_argument("--text-file", required=True, help="UTF-8 文书纯文本路径")
     docx.add_argument("--settings", help="格式设置 JSON 文件路径")
     docx.add_argument("--file-name", help="文书下载文件名")
     docx.add_argument("--output", required=True, help="新建 DOCX 输出路径")
@@ -1182,8 +1244,11 @@ def main():
         sys.stderr.reconfigure(encoding="utf-8")
     parser = build_parser()
     args = parser.parse_args()
+    update_notice = check_daily_update()
     try:
         result = args.handler(args)
+        if update_notice:
+            result["updateNotice"] = update_notice
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except ReviewError as error:
