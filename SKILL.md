@@ -1,6 +1,6 @@
 ---
-name: xunfa-skill
-description: 寻法（xunfa_skill）的文件解析和法律工作流入口。解析 doc、docx、pdf、图片或文本文件，或处理法律咨询、法条检索、法律文书起草、DOCX 生成和审查时使用；普通代码和一般文本不触发。
+name: 寻法
+description: 起草/检查/校对法律类文书时使用本skill；解析doc/docx/pdf/图片等文件时使用本skill。
 metadata:
   short-description: 寻法文件解析和法律工作流
 ---
