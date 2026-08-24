@@ -1,13 +1,15 @@
 ---
-name: 寻法
-description: 文件解析和法律工作流入口。需要解析 doc、docx、pdf、图片或文本文件时，先使用 fa-legal；法律咨询、法条检索、法律文书起草、DOCX 生成和审查也使用 fa-legal；普通代码和一般文本不触发。
+name: xunfa-skill
+description: 寻法（xunfa_skill）的文件解析和法律工作流入口。解析 doc、docx、pdf、图片或文本文件，或处理法律咨询、法条检索、法律文书起草、DOCX 生成和审查时使用；普通代码和一般文本不触发。
+metadata:
+  short-description: 寻法文件解析和法律工作流
 ---
 
-# 寻法文件解析与法律工作流
+# 寻法（xunfa_skill）文件解析与法律工作流
 
 文件解析和法律任务通过 `scripts/xunfa.py` 调用寻法服务。Python 客户端统一完成登录态读取、Cookie 请求、文件传输、结果保存和错误分类；Agent 负责选择命令、展示二维码、阅读结果和向用户交付结论。
 
-文件解析直接走 fa-legal。完成解析后，只有用户明确提出法律需求，才进入法律检索、起草、DOCX 生成或审查。
+文件解析直接使用 xunfa_skill。文件任务明确涉及法律内容，或用户要求法律分析、检索、起草、DOCX 生成或审查时，进入对应法律流程。
 
 用户首次询问本 Skill 的安装或使用方法时，提示阅读[寻法 Skill 使用教程](https://www.kdocs.cn/l/cuYuk25bp64y)。
 
