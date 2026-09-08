@@ -37,8 +37,10 @@ UPLOAD_CHUNK_SIZE = 1024 * 1024
 AUTH_MESSAGES = ("请先登录", "请重新登录")
 DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 UPDATE_NOTICE_MESSAGE = "检测到寻法技能有新版本，回复“更新寻法”即可拉取。"
-ARTICLE_PATTERN = re.compile(r"第[〇零一二三四五六七八九十百千万两\d０-９]{1,12}条(?:之[〇零一二三四五六七八九十百千万两\d０-９]{1,6})?")
-LAW_PATTERN = re.compile(r"《([^》\r\n]{2,80})》")
+HTML_TAG_PATTERN = re.compile(
+    r"<!DOCTYPE\b|</?(?:html|head|body|div|p|span|table|thead|tbody|tr|td|th|ul|ol|li|br|strong|em|h[1-6]|a|img|style|script)(?:\s+[^<>]*)?\s*/?>",
+    re.IGNORECASE,
+)
 ID_PATTERN = re.compile(r"(?:公民身份号码|身份证(?:号码|号)?)[：: \t]*([0-9Xx]+)(?![0-9A-Za-z])")
 USCC_PATTERN = re.compile(r"(?:统一社会信用代码|社会信用代码)[：: \t]*([0-9A-Za-z]+)(?![0-9A-Za-z])")
 MOBILE_PATTERN = re.compile(r"(?:手机号码|手机号)[：: \t]*([0-9][0-9 \t\u3000-]{4,30})")
@@ -61,7 +63,6 @@ COMMON_TYPOS = {
     "辨称": "辩称",
     "撤销权力人": "撤销权利人",
 }
-NON_LAW_TITLE_SUFFIXES = ("合同", "协议", "章程", "起诉状", "上诉状", "答辩状", "判决书", "裁定书", "申请书", "委托书", "承诺书", "借条", "欠条")
 ARTICLE_QUERY_PATTERN = re.compile(
     r"^第?([〇零一二三四五六七八九十百千万两\d０-９]{1,12})条?(?:之([〇零一二三四五六七八九十百千万两\d０-９]{1,6}))?$"
 )
@@ -531,30 +532,6 @@ def read_json(path):
         raise ReviewError("input_failed", f"无法读取 JSON: {path}", INPUT_FAILED_EXIT) from error
 
 
-def extract_citations(text):
-    citations = {}
-    law_matches = list(LAW_PATTERN.finditer(text))
-    for match_index, law_match in enumerate(law_matches):
-        next_law_start = law_matches[match_index + 1].start() if match_index + 1 < len(law_matches) else len(text)
-        segment_end = min(next_law_start, law_match.end() + 180)
-        segment = text[law_match.end():segment_end]
-        stop = re.search(r"[。；;\r\n]", segment)
-        if stop:
-            segment = segment[:stop.start()]
-        law_name = law_match.group(1).strip()
-        if law_name.endswith(NON_LAW_TITLE_SUFFIXES):
-            continue
-        articles = list(ARTICLE_PATTERN.finditer(segment))
-        for article in articles:
-            article_number = article.group(0)
-            key = law_name + "\u0000" + article_number
-            citations.setdefault(key, {
-                "lawName": law_name,
-                "articleNumber": article_number,
-            })
-    return list(citations.values())
-
-
 def make_issue(category, start, end, original, problem, replacement=None, status="needs_input"):
     return {
         "category": category,
@@ -745,7 +722,6 @@ def build_document_context(source, text):
         "source": source,
         "text": text,
         "textSha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-        "citations": extract_citations(text),
         "ruleIssues": collect_rule_issues(text),
     }
 
@@ -809,35 +785,18 @@ def prepare_command(args):
     }
     write_json(output_path, context)
     return {"status": context["status"], "output": str(output_path), "documents": len(documents),
-            "itemErrors": len(item_errors), "citations": sum(len(item["citations"]) for item in documents),
-            "ruleIssues": sum(len(item["ruleIssues"]) for item in documents)}
+            "itemErrors": len(item_errors), "ruleIssues": sum(len(item["ruleIssues"]) for item in documents)}
 
 
 def load_queries(args):
-    if args.queries:
-        data = read_json(Path(args.queries).resolve())
-        if isinstance(data, dict):
-            data = data.get("queries")
-        if not isinstance(data, list):
-            raise ReviewError("input_failed", "queries 必须是 JSON 数组", INPUT_FAILED_EXIT)
-        raw_queries = data
-    else:
-        context = read_json(Path(args.context).resolve())
-        if not isinstance(context, dict):
-            raise ReviewError("input_failed", "context 必须是 JSON 对象", INPUT_FAILED_EXIT)
-        documents = context.get("documents")
-        if not isinstance(documents, list):
-            raise ReviewError("input_failed", "context 中没有 documents", INPUT_FAILED_EXIT)
-        raw_queries = []
-        for document in documents:
-            if not isinstance(document, dict) or not isinstance(document.get("citations"), list):
-                raise ReviewError("input_failed", "context 中的 documents 格式错误", INPUT_FAILED_EXIT)
-            raw_queries.extend(document["citations"])
-    if not isinstance(raw_queries, list):
-        raise ReviewError("input_failed", "法条查询数据必须是 JSON 数组", INPUT_FAILED_EXIT)
+    data = read_json(Path(args.queries).resolve())
+    if isinstance(data, dict):
+        data = data.get("queries")
+    if not isinstance(data, list):
+        raise ReviewError("input_failed", "queries 必须是 JSON 数组", INPUT_FAILED_EXIT)
     queries = []
     seen = set()
-    for index, item in enumerate(raw_queries):
+    for index, item in enumerate(data):
         if not isinstance(item, dict):
             raise ReviewError("input_failed", f"第 {index + 1} 项法条查询不是 JSON 对象", INPUT_FAILED_EXIT)
         law_name_value = item.get("lawName")
@@ -863,7 +822,7 @@ def load_queries(args):
 
 def laws_command(args):
     queries = load_queries(args)
-    input_path = Path(args.queries or args.context).resolve()
+    input_path = Path(args.queries).resolve()
     output_path = resolve_output_path(args.output, [input_path])
     if not queries:
         write_json(output_path, {"status": "ok", "queries": [], "results": []})
@@ -1072,6 +1031,8 @@ def docx_command(args):
     text = sys.stdin.read()
     if not text.strip():
         raise ReviewError("input_failed", "文书正文不能为空", INPUT_FAILED_EXIT)
+    if HTML_TAG_PATTERN.search(text):
+        raise ReviewError("input_failed", "文书正文不能包含 HTML 标签，请改为纯文本条目式内容", INPUT_FAILED_EXIT)
     protected_paths = []
     settings = {}
     if args.settings:
@@ -1164,10 +1125,8 @@ def build_parser():
     prepare.add_argument("--base-url", help="用户明确指定的服务地址")
     prepare.set_defaults(handler=prepare_command)
 
-    laws = subparsers.add_parser("laws", help="一次请求批量核验全部法条")
-    query_group = laws.add_mutually_exclusive_group(required=True)
-    query_group.add_argument("--context", help="prepare 生成的检查上下文")
-    query_group.add_argument("--queries", help="Agent 补充后的法条查询 JSON 数组")
+    laws = subparsers.add_parser("laws", help="一次请求批量核验明确提供的法条")
+    laws.add_argument("--queries", required=True, help="Agent 根据原文整理的法条查询 JSON 数组")
     laws.add_argument("--output", required=True, help="批量法条结果 JSON 输出路径")
     laws.add_argument("--base-url", help="用户明确指定的服务地址")
     laws.set_defaults(handler=laws_command)

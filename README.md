@@ -1,6 +1,6 @@
-# 寻法（xunfa_skill）Skill
+# 寻法（xunfa-legal-workflow）Skill
 
-寻法（`xunfa_skill`）为文件解析和法律工作提供统一入口。它通过寻法服务完成文件解析、法条检索、法律文书 DOCX 导出和登录态管理；文书检查还会结合本地规则识别明确的形式错误。
+寻法（`xunfa-legal-workflow`）为文件解析和法律工作提供统一入口。它通过寻法服务完成文件解析、法条检索、法律文书 DOCX 导出和登录态管理；文书检查还会结合本地规则识别明确的形式错误。
 
 日常使用由 Codex 自动路由到 `SKILL.md`。本 README 面向维护者和需要手动运行客户端的人，说明项目结构、可用命令和本地校验方式；具体任务规则以对应的 `references/` 文档为准。
 
@@ -12,16 +12,18 @@ xunfa_skill/
 ├── scripts/
 │   ├── xunfa.py                 命令行入口
 │   └── legal_review.py          客户端、解析和文书检查实现
-└── references/
+├── references/
     ├── authentication.md        微信扫码与账号密码登录
     ├── file-parsing.md          文件解析与 OCR 配置
     ├── law-retrieval.md         法条检索和时效核验
     ├── document-drafting.md     法律文书起草
     ├── document-generation.md   DOCX 导出
     └── document-review.md       法律文书检查与修正版生成
+└── tests/
+    └── test_legal_review.py     文书修订文本测试
 ```
 
-`scripts/xunfa.py` 是稳定的命令入口，实际实现位于 `scripts/legal_review.py`。从项目根目录运行命令即可：
+`scripts/xunfa.py` 是稳定的命令入口，实际实现位于 `scripts/legal_review.py`。从项目根目录运行命令；Windows 使用 `python`，macOS 和 Linux 通常使用 `python3`：
 
 ```powershell
 python scripts/xunfa.py --help
@@ -56,7 +58,7 @@ python scripts/xunfa.py auth-password --username "<账号>" --password-prompt
 | 场景 | 命令 | 参考文档 |
 | --- | --- | --- |
 | 解析 doc、docx、pdf、图片或文本文件 | `parse --files "<绝对路径>" --output "<临时目录>/parsed-files.json"` | [文件解析](references/file-parsing.md) |
-| 批量核验已知法条 | `laws --queries "<临时目录>/law-queries.json" --output "<临时目录>/law-results.json"` | [法律检索与核验](references/law-retrieval.md) |
+| 批量核验原文中明确出现的法条 | `laws --queries "<临时目录>/law-queries.json" --output "<临时目录>/law-results.json"` | [法律检索与核验](references/law-retrieval.md) |
 | 按完整法名查询法条 | `law-exact --input "<请求.json>" --output "<结果.json>"` | [法律检索与核验](references/law-retrieval.md) |
 | 将法律文书纯文本导出为 DOCX | `<文书纯文本> \| python scripts/xunfa.py docx --output "<输出.docx>"` | [法律文书生成](references/document-generation.md) |
 | 生成法律文书检查上下文 | `prepare --files "<绝对路径>" --output "<临时目录>/review-context.json"` | [法律文书检查](references/document-review.md) |
@@ -76,7 +78,7 @@ python scripts/xunfa.py auth-password --username "<账号>" --password-prompt
 | `input_failed` | 输入、输出路径或 JSON 格式不符合要求 | 修正参数或换用新的输出路径 |
 | `request_failed` | 服务请求未完成或响应格式异常 | 如实报告错误，不把未核验内容当作结果 |
 
-文书检查的 `prepare` 结果中的 `ruleIssues` 是候选问题，提交给用户前仍应结合原文复核。法条引用以检索结果中的法名、条号、原文和时效状态为准。
+文书检查的 `prepare` 结果中的 `ruleIssues` 是候选问题，提交给用户前仍应结合原文复核。Agent 根据原文整理明确的法条查询项，法条引用以检索结果中的法名、条号、原文和时效状态为准。
 
 ## 每日版本检查与手动更新
 
@@ -99,11 +101,11 @@ git pull --ff-only
 ```powershell
 python -X utf8 -m py_compile scripts/xunfa.py scripts/legal_review.py
 python -X utf8 scripts/xunfa.py --help
-python -X utf8 "C:\Users\chengfeng\.codex\skills\.system\skill-creator\scripts\quick_validate.py" .
+python -X utf8 -m unittest discover -s tests -v
 git diff --check
 ```
 
-前两项检查 Python 语法和 CLI 装配；Skill 校验检查前置元数据与未完成脚手架；`git diff --check` 检查已改动文件的空白错误。它们都不替代带真实账号、真实文件和服务端接口的端到端验证。
+再使用当前机器安装的 Skill Creator 中的 `scripts/quick_validate.py` 校验本目录。前三项检查 Python 语法、CLI 装配和文书修订；Skill 校验检查前置元数据与未完成脚手架；`git diff --check` 检查已改动文件的空白错误。它们都不替代带真实账号、真实文件和服务端接口的端到端验证。
 
 ## 维护原则
 
