@@ -45,7 +45,7 @@ python scripts/xunfa.py auth-qr-start --output "<临时目录>/xunfa-login.png"
 python scripts/xunfa.py auth-qr-wait --uuid "<auth-qr-start 返回的 uuid>"
 ```
 
-第一条命令会生成二维码 PNG。展示该图片并完成扫码后，再执行第二条命令。也可以在可交互终端使用账号密码登录：
+第一条命令会生成二维码 PNG。展示该图片并完成扫码后，再执行第二条命令；该命令通过 SSE 等待扫码通知，不会轮询登录接口。也可以在可交互终端使用账号密码登录：
 
 ```powershell
 python scripts/xunfa.py auth-password --username "<账号>" --password-prompt

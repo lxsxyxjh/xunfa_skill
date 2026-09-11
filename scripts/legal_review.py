@@ -33,6 +33,7 @@ INPUT_FAILED_EXIT = 5
 UPLOAD_TIMEOUT_SECONDS = 300
 LAW_TIMEOUT_SECONDS = 60
 UPDATE_FETCH_TIMEOUT_SECONDS = 3
+SSE_RECONNECT_DELAY_SECONDS = 1
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 AUTH_MESSAGES = ("请先登录", "请重新登录")
 DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -1077,23 +1078,57 @@ def auth_qr_start_command(args):
     return {"status": "ok", "uuid": str(data["uuid"]), "qrPath": str(output_path)}
 
 
+def wait_for_qr_login_event(client, uuid_value, timeout):
+    deadline = time.monotonic() + timeout
+    event_path = "/wxLoginEvent/" + urllib.parse.quote(uuid_value, safe="")
+    stream_opened = False
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        request = urllib.request.Request(client.base_url + event_path, headers={"Accept": "text/event-stream"})
+        event_name = None
+        try:
+            with urllib.request.urlopen(request, timeout=remaining) as response:
+                content_type = str(response.headers.get("Content-Type", "")).lower()
+                if not content_type.startswith("text/event-stream"):
+                    raise ReviewError("request_failed", "二维码通知接口未返回 SSE 数据流", REQUEST_FAILED_EXIT)
+                stream_opened = True
+                for raw_line in response:
+                    line = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
+                    if not line:
+                        if event_name == "wx-login-completed":
+                            return
+                        event_name = None
+                    elif line.startswith("event:"):
+                        event_name = line[6:].strip()
+                if event_name == "wx-login-completed":
+                    return
+        except urllib.error.HTTPError as error:
+            raw = error.read()
+            result = parse_json_response(raw)
+            message = result.get("msg") if isinstance(result, dict) else str(error)
+            raise ReviewError("request_failed", sanitize_error_message(message), REQUEST_FAILED_EXIT) from error
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            if not stream_opened:
+                raise ReviewError("request_failed", sanitize_error_message(error), REQUEST_FAILED_EXIT) from error
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(SSE_RECONNECT_DELAY_SECONDS, remaining))
+    raise ReviewError("auth_required", "等待扫码超时", AUTH_REQUIRED_EXIT)
+
+
 def auth_qr_wait_command(args):
     uuid_value = str(args.uuid or "").strip()
     if not uuid_value:
         raise ReviewError("input_failed", "缺少二维码 uuid", INPUT_FAILED_EXIT)
     base_url = resolve_base_url(args.base_url)
     client = XunfaClient(base_url, "")
-    deadline = time.monotonic() + args.timeout
-    while time.monotonic() < deadline:
-        response = client.send_form("/checkWXLogin", {"uuid": uuid_value})
-        if str(response.get("code")) == "1":
-            data = response.get("data") if isinstance(response.get("data"), dict) else {}
-            save_auth(base_url, extract_cookie_token(client.last_headers), data.get("userna"))
-            return {"status": "ok", "username": str(data.get("userna") or "微信登录")}
-        if str(response.get("msg", "")) != "未登录":
-            raise ReviewError("request_failed", sanitize_error_message(response.get("msg")), REQUEST_FAILED_EXIT)
-        time.sleep(args.interval)
-    raise ReviewError("auth_required", "等待扫码超时", AUTH_REQUIRED_EXIT)
+    wait_for_qr_login_event(client, uuid_value, args.timeout)
+    response = client.send_form("/checkWXLogin", {"uuid": uuid_value})
+    if str(response.get("code")) != "1":
+        raise ReviewError("request_failed", sanitize_error_message(response.get("msg")), REQUEST_FAILED_EXIT)
+    data = response.get("data") if isinstance(response.get("data"), dict) else {}
+    save_auth(base_url, extract_cookie_token(client.last_headers), data.get("userna"))
+    return {"status": "ok", "username": str(data.get("userna") or "微信登录")}
 
 
 def auth_password_command(args):
@@ -1176,7 +1211,6 @@ def build_parser():
 
     qr_wait = subparsers.add_parser("auth-qr-wait", help="等待扫码登录并保存登录态")
     qr_wait.add_argument("--uuid", required=True, help="auth-qr-start 返回的 uuid")
-    qr_wait.add_argument("--interval", type=int, default=5, choices=range(1, 61), metavar="1-60", help="轮询间隔秒数")
     qr_wait.add_argument("--timeout", type=int, default=300, choices=range(5, 601), metavar="5-600", help="最长等待秒数")
     qr_wait.add_argument("--base-url", help="用户明确指定的服务地址")
     qr_wait.set_defaults(handler=auth_qr_wait_command)

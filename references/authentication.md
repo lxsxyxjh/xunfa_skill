@@ -18,7 +18,7 @@ python scripts/xunfa.py auth-qr-start --output "<临时目录>/xunfa-login.png"
 python scripts/xunfa.py auth-qr-wait --uuid "<uuid>"
 ```
 
-扫码成功后客户端保存登录态，并返回登录账户名。等待扫码时可按用户实际操作重新运行 `auth-qr-wait`；二维码或扫码结果异常时如实报告命令结果。
+第二条命令会建立 SSE 登录通知连接，扫码成功后只兑换一次登录 Cookie 并保存登录态，连接短暂中断时会自动重新订阅通知。命令结束后返回登录账户名；二维码或扫码结果异常时如实报告命令结果。
 
 ## 账号密码登录
 
