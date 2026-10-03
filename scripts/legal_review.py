@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-OFFICIAL_SERVICE_URL = "https://fabaotu.com"
+OFFICIAL_SERVICE_URL = "https://xunfakeji.com"
 OFFICIAL_SERVICE_HOST = urllib.parse.urlparse(OFFICIAL_SERVICE_URL).hostname
 DEFAULT_BASE_URL = OFFICIAL_SERVICE_URL
 SESSION_COOKIE_NAME = "fabao"

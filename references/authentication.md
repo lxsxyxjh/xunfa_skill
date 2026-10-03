@@ -2,7 +2,7 @@
 
 寻法客户端使用用户目录 `.xunfa/auth.json` 保存当前服务地址的登录态。`scripts/xunfa.py` 负责读取、校验和更新此文件；`loginTime` 仅记录登录时间，业务命令的实际响应决定当前登录态是否可用。
 
-默认服务地址为 `https://fabaotu.com`。用户明确指定本机开发服务时，命令可传 `--base-url`；客户端只接受正式 HTTPS 服务和本机回环地址。
+默认服务地址为 `https://xunfakeji.com`。用户明确指定本机开发服务时，命令可传 `--base-url`；客户端只接受正式 HTTPS 服务和本机回环地址。
 
 ## 微信扫码登录
 
