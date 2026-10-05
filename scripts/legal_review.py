@@ -21,7 +21,7 @@ from pathlib import Path
 OFFICIAL_SERVICE_URL = "https://xunfakeji.com"
 OFFICIAL_SERVICE_HOST = urllib.parse.urlparse(OFFICIAL_SERVICE_URL).hostname
 DEFAULT_BASE_URL = OFFICIAL_SERVICE_URL
-SESSION_COOKIE_NAME = "fabao"
+SESSION_COOKIE_NAME = "xunfa"
 AUTH_DIRECTORY_NAME = ".xunfa"
 UPDATE_CHECK_FILE_NAME = "update-check.json"
 BASE_URL_ENV_NAME = "XUNFA_BASE_URL"
