@@ -87,6 +87,13 @@ class ApplyCommandTests(unittest.TestCase):
         issues = collect_rule_issues(text)
         self.assertEqual(issues, [])
 
+    def test_ai_phrases_detected_without_overlap(self):
+        text = "上述证据形成了资金闭环证据，并形成完整证据链，将事实焊死，达成了一揽子协议。"
+        issues = collect_rule_issues(text)
+        ai_issues = [i for i in issues if i["category"] == "AI味问题"]
+        found_phrases = [i["original"] for i in ai_issues]
+        self.assertEqual(found_phrases, ["资金闭环证据", "形成完整证据链", "焊死", "一揽子"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,12 +5,9 @@ description: Use when drafting, reviewing, or revising legal documents.
 
 # 法律文书工作流（xunfa-legal-workflow）
 
-用于法律文书起草、法律文书审查与修订、法条核验规范控制。本技能剔除了外部登录认证与云端 PDF/OCR 解析依赖，保留全部本地法律文书规则校验引擎（`scripts/xunfa.py`）与文书写作、审查、反 AI 味强约束体系。
+用于专业法律文书起草、法律文书审查与修订、法条核验规范控制及标准 Word (DOCX) 导出。技能保留本地规则校验引擎（`scripts/xunfa.py`）与正向引导的法律文书写作、审查体系。
 
-涉及本地文书读取时（全程后台全自动执行，严禁要求或建议用户人工预判 PDF 类型或手动指定工具）：
-- **第一步**：并发使用系统内置 `read_file` 自动探测并读取文档（支持 TXT、Word 及含文字层的 PDF）；
-- **第二步**：对返回 `NeedsOcrError` 的扫描版 PDF，后台自动汇总全部文件路径，单次运行 `D:/alotsoft/python-3.12.10/python.exe C:/Users/chengfeng/AppData/Local/hermes/skills/productivity/xunfa-legal-workflow/scripts/case_reader.py <PDF1> [PDF2...]`，在同一次大模型请求中打包解析全部附件。
-审查与精确替换使用本技能自带的 scripts/xunfa.py 脚本；查企业、法条、案例及幻觉核验优先调用元典开放平台 MCP（yuandian-open-platform）或运行 scripts/yuandian_mcp.py。
+审查与精确替换使用本技能自带的 `scripts/xunfa.py` 脚本；查企业、法条、案例优先调用元典开放平台 MCP（`yuandian-open-platform`）工具集或运行 `scripts/yuandian_mcp.py`。
 
 ## 能力与路由
 
@@ -36,7 +33,7 @@ description: Use when drafting, reviewing, or revising legal documents.
 
 4. **主体信息与反 AI 味精炼准则**：
    - 组织主体优先调用元典 MCP 补全统一社会信用代码、住所地与法定代表人；缺失的非必填字段直接省略以保障 `ruleIssues: 0`。自然人采用“[姓名]，[性别]，[出生年月日]出生，[民族]，公民身份号码：[身份证号]，住[住址]，联系电话：[电话]”格式；联系电话支持 11 位手机号及带区号的标准固定电话（如 `0662-6500899`）。落款姓名和日期保留空白手签位。
-   - 反 AI 味：不使用“结论先行+冒号总分结构”、绝对化修饰（“显而易见”“毋庸置疑”“任何”“绝对”“完全”）、情绪化修辞（“肆意”“践踏”“底线”）、套话（“进一步印证”“形成完整证据链”）及机械连接词（“且”“并且”“该等”）；“综上所述”仅在文末总结段使用一次。
+   - 反 AI 味核心词库与结构：严禁使用伪专业套话及大厂黑话（`进一步印证`、`切断`、`证据链`、`完整证据链`、`形成完整证据链`、`至关重要`、`彻底落空`、`闭环`、`资金闭环证据`、`逻辑闭环`、`印证闭环`、`一揽子`、`焊死`、`锁定事实`、`铁证如山`）；严禁“结论先行+冒号总分结构”与主观绝对化断言；“综上所述”仅在文末总结段使用一次。
 
 5. **工作流执行引导**：
    - 遇到独立的多主体或多法条检索需求时，优先利用并发查询提高效率；涉及复杂事实认定或法律关系梳理时，按需深入考证。

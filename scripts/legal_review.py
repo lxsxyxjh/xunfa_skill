@@ -47,6 +47,25 @@ COMMON_TYPOS = {
     "被答辩人成为": "“被答辩人”称谓",
 }
 
+AI_PHRASES = (
+    "形成完整证据链",
+    "资金闭环证据",
+    "完整证据链",
+    "进一步印证",
+    "至关重要",
+    "彻底落空",
+    "逻辑闭环",
+    "印证闭环",
+    "铁证如山",
+    "锁定事实",
+    "证据链",
+    "一揽子",
+    "切断",
+    "闭环",
+    "焊死",
+)
+AI_PHRASE_PATTERN = re.compile("|".join(re.escape(phrase) for phrase in sorted(AI_PHRASES, key=len, reverse=True)))
+
 ARTICLE_QUERY_PATTERN = re.compile(
     r"^第?([〇零一二三四五六七八九十百千万两\d０-９]{1,12})条?(?:之([〇零一二三四五六七八九十百千万两\d０-９]{1,6}))?$"
 )
@@ -269,6 +288,10 @@ def collect_rule_issues(text):
         for match in re.finditer(re.escape(wrong), text):
             issues.append(make_issue("错别字", match.start(), match.end(), wrong,
                                      "高置信度常见错词", correct, "ready"))
+
+    for match in AI_PHRASE_PATTERN.finditer(text):
+        issues.append(make_issue("AI味问题", match.start(), match.end(), match.group(0),
+                                 "检测到典型AI味套话或伪专业黑话，建议删除或改为客观事实陈述"))
 
     issues.extend(find_unbalanced_punctuation(text))
     return deduplicate_issues(issues)

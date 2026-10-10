@@ -5,7 +5,7 @@ import os
 import sys
 import requests
 
-ENV_PATH = os.environ.get("HERMES_ENV_PATH", "C:/Users/chengfeng/AppData/Local/hermes/.env")
+ENV_PATH = os.environ.get("HERMES_ENV_PATH", ".env")
 YUANDIAN_URL = os.environ.get("YUANDIAN_MCP_URL", "https://open.chineselaw.com/mcp")
 
 

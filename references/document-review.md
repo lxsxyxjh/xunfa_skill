@@ -4,10 +4,8 @@
 
 ## 一、工作流程
 
-1. **获取文书文本（标准两步法）**：
-   - 若用户直接粘贴文本，将其保存为当前任务临时目录下的 UTF-8 文本文件（例如 `$TMPDIR/input_doc.txt`）。
-   - 若用户提供本地文档文件（`.docx`、`.txt`、文字版 `.pdf` 等），统一先使用系统 `read_file` 工具提取完整文本并保存为临时 UTF-8 文本文件。
-   - 若本地 PDF 抛出 `NeedsOcrError`（纯图片扫描件/无文字层），**严禁额外自写探测脚本或单个串行重试**；必须汇总所有失败的扫描件路径，单次批量运行 `D:/alotsoft/python-3.12.10/python.exe "C:/Users/chengfeng/AppData/Local/hermes/skills/productivity/xunfa-legal-workflow/scripts/case_reader.py" <PDF1> [PDF2...] --ocr`，由脚本多线程并发调用主模型原生多模态识别（Gemini Base64 直投）提取全文并校验身份证号，将提取文本保存为临时 UTF-8 文本文件。
+1. **准备待审查文书文本**：
+   - 将待审查的文书正文保存为临时目录下的 UTF-8 文本文件（例如 `$TMPDIR/input_doc.txt`）。
 2. **运行本地自动化规则检查 (`prepare`)**：
    - 调用 `scripts/xunfa.py prepare --text-file "<UTF-8临时文本>" --output "<临时目录>/review-context.json"`。
    - 取得文书的 `text`、`ruleIssues`（自动检出的身份证号校验错误、统一社会信用代码校验错误、手机号/银行卡号格式错误、非法日期、未替换占位符、常见错别字、未配对标点符号）和 `textSha256`。
@@ -25,10 +23,10 @@
 
 ```bash
 # 1. 生成检查上下文与规则问题
-python "C:/Users/chengfeng/AppData/Local/hermes/skills/productivity/xunfa-legal-workflow/scripts/xunfa.py" prepare --text-file "<UTF-8临时文本路径>" --output "<临时目录>/review-context.json"
+python scripts/xunfa.py prepare --text-file "<UTF-8临时文本路径>" --output "<临时目录>/review-context.json"
 
 # 2. 根据用户确认项生成零篡改修正版
-python "C:/Users/chengfeng/AppData/Local/hermes/skills/productivity/xunfa-legal-workflow/scripts/xunfa.py" apply --context "<临时目录>/review-context.json" --document-number 1 --issues "<临时目录>/accepted-issues.json" --output "<输出路径>/修改后完整版本.txt"
+python scripts/xunfa.py apply --context "<临时目录>/review-context.json" --document-number 1 --issues "<临时目录>/accepted-issues.json" --output "<输出路径>/修改后完整版本.txt"
 ```
 
 ## 三、四大检查重点
@@ -44,11 +42,13 @@ python "C:/Users/chengfeng/AppData/Local/hermes/skills/productivity/xunfa-legal-
 
 ## 四、“AI味问题”专项排查标准
 
-全文检查时，以下情况统一标为“AI味问题”：
+全文检查时，以下情况统一标为“AI味问题”（其中核心词汇已内置于 `legal_review.py` 的 `prepare` 自动化扫描引擎中）：
 
-1. **结论先行+冒号总分结构**：结论性首句后使用冒号，再展开同一事实或理由的总分结构（例如：“双方借贷合意真实合法，内容清晰明确：原被告于……”）。优先只修改或删除结论性引导短句及冒号，后续事实内容不动。
-2. **伪专业套话与绝对化断言**：“进一步印证、切断、证据链、完整证据链、形成完整证据链、至关重要、彻底落空”，以及“显而易见、毋庸置疑、不言而喻、无可辩驳、毫无疑问、任何、绝对、完全”等绝对化断言。
-3. **情绪化修辞与模板化过渡**：“践踏、肆意、底线、严重破坏市场秩序、于法不容”等情绪化修辞；“值得注意的是、不可否认的是、毋庸讳言、进而言之”等模板化过渡；“该等”和机械粘连分句的“且/并且”。
+1. **伪专业套话与大厂黑话（核心必查词库）**：
+   - 虚假证据套话：`进一步印证`、`切断`、`证据链`、`完整证据链`、`形成完整证据链`、`至关重要`、`彻底落空`；
+   - 商业与网络黑话：`闭环`、`资金闭环证据`、`逻辑闭环`、`印证闭环`、`一揽子`、`焊死`、`锁定事实`、`铁证如山`。
+2. **结论先行+冒号总分结构**：结论性首句后使用冒号，再展开同一事实或理由的总分结构（例如：“双方借贷合意真实合法，内容清晰明确：原被告于……”）。优先只修改或删除结论性引导短句及冒号，后续事实内容不动。
+3. **主观绝对化断言与情绪化修辞**：使用“显而易见、毋庸置疑、不言而喻”等主观断言代替客观事实论证，或使用“肆意、践踏、底线”等情绪化修辞。
 4. **滥用总结词**：非结尾段使用“综上所述”，或全文重复使用“综上所述”。
 
 **排查边界约束**：
