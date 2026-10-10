@@ -1,30 +1,34 @@
-# 寻法法律技能
+# 法律文书工作流（xunfa-legal-workflow）
 
-为 WorkBuddy、Hermes、OpenClaw 等支持 Skill 的 AI 工具提供文件解析、法条检索、文书起草和法律文书 DOCX 导出。
+为 Hermes、OpenClaw 等支持 Skill 的 AI 工具提供全自动文档解析、法条与企业精准检索、专业法律文书起草、零篡改审查修订和标准 Word (DOCX) 导出。
 
-[完整使用教程](https://www.kdocs.cn/l/cuYuk25bp64y)
+本项目已全面剔除外部扫码登录及百度云 OCR 繁琐依赖，保留完整的本地规则校验引擎（`scripts/xunfa.py`）、原生多模态扫描件解析（`scripts/case_reader.py`）、元典开放平台 MCP 联动及正向引导的法律文书写作体系。
 
-## 安装与登录
+## 核心能力
 
-把下面这段话发给你的 AI 工具：
+1. **全自动两步法文档读取**：
+   - 第一步：自动调用系统内置读取工具提取文本层（Word、TXT、文字版 PDF）；
+   - 第二步：对扫描版 PDF 自动降级调用 `scripts/case_reader.py`，通过单次多模态请求打包提取全部页面、印章及手写信息。
 
-```text
-使用 Git 克隆方式安装 Skill：https://gitee.com/buyixjh/xunfa_skill
-读取技能，介绍用法，并引导我完成微信扫码登录。
-```
+2. **专业法律文书起草（正向引导 + 两步极速流）**：
+   - 诉讼请求全面覆盖合同约定的本金、利息及维权损失（含律师服务费、保全保险费等）；
+   - 合同条款、协议及裁判文书引述采用（：“……”）一字不差照录原文；
+   - 单争点匹配单核心法条，通过元典详情接口逐字核对现行有效官方原文；
+   - 单自然段内连贯完成“事实—法条—结论”三段论，剔除 AI 味套话与机械连词。
 
-扫码后通常会自动确认登录；如果没有继续，可以告诉它“我已登录”。
+3. **本地规则预检与零篡改修订**：
+   - `prepare`：自动校验 18 位身份证号、统一社会信用代码、手机与固定电话格式、公历日期合法性、未配对标点及常见错别字；
+   - `apply`：基于 SHA-256 哈希与字符偏移量，仅替换用户确认项，其余内容 100% 原样保留。
 
-## 使用
+4. **标准法律文书 DOCX 导出**：
+   - `docx`：将纯文本提交导出接口生成标准排版 Word 文档并直接交付。
 
-直接描述需求，例如“读取这个 PDF”“核验文中的法条”“起草一份答辩状并导出 DOCX”。支持手动调用的工具，也可以先输入 `/xunfa-legal-workflow` 再描述任务。
+## 目录结构
 
-## PDF 与图片识别
-
-建议配置自己的百度 OCR 密钥。在[百度智能云控制台](https://console.bce.baidu.com/ai-engine/ocr/overview/index)完成实名认证、创建应用，取得 API Key 和 Secret Key 后，按工具引导配置；也可以登录[寻法账户中心](https://xunfakeji.com/page/userInfo)填写。
-
-## 更新
-
-告诉 AI 工具：“检查并更新已安装的寻法 Skill，保留本地修改。”
-
-本项目需要 Python 3.9 或以上，无需安装第三方 Python 依赖。开发入口为 `scripts/xunfa.py`，具体流程见 `SKILL.md` 和 `references/`。
+- `SKILL.md`：内联完整通用起草规范、极速执行工作流与能力路由主文件
+- `references/document-drafting.md`：各类法律文书固定模板与起草细则
+- `references/document-review.md`：法律文书审查、AI 味排查与零篡改修订规范
+- `references/law-retrieval.md`：元典 MCP 检索矩阵与法条核验规范
+- `scripts/xunfa.py` & `scripts/legal_review.py`：本地规则校验、修订与 DOCX 导出引擎
+- `scripts/case_reader.py`：扫描版 PDF 原生多模态批量解析器
+- `scripts/yuandian_mcp.py`：元典开放平台客户端辅助脚本

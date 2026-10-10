@@ -11,23 +11,7 @@ from unittest.mock import patch
 SCRIPTS_DIRECTORY = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIRECTORY))
 
-from legal_review import XunfaClient, apply_command, auth_qr_wait_command
-
-
-class SseResponse:
-    headers = {"Content-Type": "text/event-stream;charset=UTF-8"}
-
-    def __init__(self, lines):
-        self.lines = lines
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exception_type, exception_value, traceback):
-        return False
-
-    def __iter__(self):
-        return iter(self.lines)
+from legal_review import apply_command, collect_rule_issues
 
 
 class ApplyCommandTests(unittest.TestCase):
@@ -95,41 +79,13 @@ class ApplyCommandTests(unittest.TestCase):
             ))
 
 
-class AuthQrWaitCommandTests(unittest.TestCase):
-    def test_sse_event_exchanges_login_cookie_once(self):
-        def check_login(client, path, values):
-            self.assertEqual(path, "/checkWXLogin")
-            self.assertEqual(values, {"uuid": "qr-uuid"})
-            return {"code": 1, "data": {"userna": "wx-user"}}
-
-        with patch("legal_review.urllib.request.urlopen", return_value=SseResponse((
-                    b"event: wx-login-completed\n", b"data: completed\n", b"\n"))) as urlopen, \
-                patch.object(XunfaClient, "send_form", autospec=True, side_effect=check_login) as send_form, \
-                patch("legal_review.extract_cookie_token", return_value="login-token"), \
-                patch("legal_review.save_auth") as save_auth:
-            result = auth_qr_wait_command(SimpleNamespace(uuid="qr-uuid", timeout=5, base_url="http://127.0.0.1"))
-
-        self.assertEqual(result, {"status": "ok", "username": "wx-user"})
-        self.assertEqual(urlopen.call_count, 1)
-        self.assertEqual(send_form.call_count, 1)
-        save_auth.assert_called_once_with("http://127.0.0.1", "login-token", "wx-user")
-
-    def test_sse_reconnects_without_repeating_login_exchange(self):
-        def check_login(client, path, values):
-            self.assertEqual(path, "/checkWXLogin")
-            self.assertEqual(values, {"uuid": "qr-uuid"})
-            return {"code": 1, "data": {"userna": "wx-user"}}
-
-        with patch("legal_review.urllib.request.urlopen", side_effect=(
-                    SseResponse(()), SseResponse((b"event: wx-login-completed\n", b"\n")))) as urlopen, \
-                patch("legal_review.time.sleep"), \
-                patch.object(XunfaClient, "send_form", autospec=True, side_effect=check_login) as send_form, \
-                patch("legal_review.extract_cookie_token", return_value="login-token"), \
-                patch("legal_review.save_auth"):
-            auth_qr_wait_command(SimpleNamespace(uuid="qr-uuid", timeout=5, base_url="http://127.0.0.1"))
-
-        self.assertEqual(urlopen.call_count, 2)
-        self.assertEqual(send_form.call_count, 1)
+    def test_contact_phone_accepts_landline_and_mobile(self):
+        text = (
+            "原告：广东万佳建设有限公司，联系电话：0662-6500899。\n"
+            "被告：阳江市江城区白沙街福岗村民委员会，联系电话：13078361130。"
+        )
+        issues = collect_rule_issues(text)
+        self.assertEqual(issues, [])
 
 
 if __name__ == "__main__":
