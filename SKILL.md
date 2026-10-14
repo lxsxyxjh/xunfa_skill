@@ -14,7 +14,7 @@ description: Use when drafting, reviewing, or revising legal documents.
 1. **法律文书起草**：起草起诉状、答辩状、上诉状、行政复议申请书等文书时，直接遵循本文件下方内联的【核心规范与极速工作流】即可执行，无需再分轮次读取子文件（特殊文书模板可按需参阅 `references/document-drafting.md`）。
 2. **法律文书 Word 默认导出与正文呈现（强约束）**：
    - 聊天界面文书正文输出时，纯文本统一使用单个未嵌套的标准 text 代码块包裹交付（内部采用“一、”“1.”“（1）”自然层级），便于直接复制且避免 Markdown 语法转义影响文书排版。
-   - 只要起草或输出完整法律文书，必须通过 `scripts/xunfa.py docx --input "<临时纯文本.txt>" --output "<输出路径>.docx"` 提交纯文本至 `http://1.14.120.187/file/exportLegalDocx` 生成格式化 Word 文档，并通过 `MEDIA:/绝对路径` 交付。
+   - 只要起草或输出完整法律文书，必须通过 `scripts/xunfa.py docx --input "<临时纯文本.txt>" --output "<输出路径>.docx"` 提交纯文本至 `https://xunfakeji.com/file/exportLegalDocx` 生成格式化 Word 文档，并通过 `MEDIA:/绝对路径` 交付。
 3. **法律文书检查与修订**：审查合同、协议、诉状、判决书或其他法律文书时，参阅 [法律文书检查](references/document-review.md)，运行 `prepare` 和 `apply` 引擎完成零篡改修订。
 4. **元典 MCP 高效联动**：查企业主体用 `yuandian_search_company_pr_095ad592`；核验法条原文用 `yuandian_get_legal_article_detail`（传入 `regulation_name` 与 `article_number`）。禁用需 VIP 权限的 `hall_detect` 接口。
 

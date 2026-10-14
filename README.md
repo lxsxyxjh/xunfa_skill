@@ -97,7 +97,7 @@ python scripts/xunfa.py docx --input corrected.txt --output "民事起诉状.doc
 
 | 环境变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `DOCX_SERVICE_URL` | `http://1.14.120.187/file/exportLegalDocx` | 标准法律文书 DOCX 格式化导出服务接口地址 |
+| `DOCX_SERVICE_URL` | `https://xunfakeji.com/file/exportLegalDocx` | 标准法律文书 DOCX 格式化导出服务接口地址 |
 | `YUANDIAN_API_KEY` | *(空)* | 元典开放平台 API Key（亦可使用 `YUANDIAN_TOKEN`） |
 | `YUANDIAN_MCP_URL` | `https://open.chineselaw.com/mcp` | 元典开放平台 MCP 服务接口地址 |
 
