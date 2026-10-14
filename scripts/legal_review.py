@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 
 INPUT_FAILED_EXIT = 5
-DOCX_SERVICE_URL = "http://1.14.120.187/file/exportLegalDocx"
+DOCX_SERVICE_URL = os.environ.get("DOCX_SERVICE_URL", "http://1.14.120.187/file/exportLegalDocx")
 
 HTML_TAG_PATTERN = re.compile(
     r"<!DOCTYPE\b|</?(?:html|head|body|div|p|span|table|thead|tbody|tr|td|th|ul|ol|li|br|strong|em|h[1-6]|a|img|style|script)(?:\s+[^<>]*)?\s*/?>",

@@ -23,7 +23,7 @@ def load_yuandian_token() -> str:
                             return val if val.startswith("Bearer ") else f"Bearer {val}"
         except Exception:
             pass
-    return "Bearer sk_TnRttiPsWtBuQCPPiTD8GZ7cKA9UZGqe"
+    return ""
 
 
 YUANDIAN_TOKEN = load_yuandian_token()
@@ -35,8 +35,9 @@ class YuandianMCPClient:
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
-            "Authorization": token,
         }
+        if token:
+            self.headers["Authorization"] = token
         self.session_id = None
 
     def ensure_session(self) -> None:
