@@ -1,4 +1,4 @@
-# 讯法法律工作流（xunfa-legal-workflow）
+# 寻法法律工作流（xunfa-legal-workflow）
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
