@@ -41,3 +41,4 @@ description: Use when drafting, reviewing, or revising legal documents.
 5. **工作流执行引导**：
    - 遇到独立的多主体或多法条检索需求时，优先利用并发查询提高效率；涉及复杂事实认定或法律关系梳理时，按需深入考证。
    - 文书起草完毕后，通过 `xunfa.py prepare` 进行规则自检，并通过 `xunfa.py docx` 导出 Word 文档交付（`--output` 采用独占创建模式，重新生成时指定新文件名以避免文件已存在或被 Word 占用的冲突）。
+   - **Windows 临时文件路径规范（强约束）**：在 Windows 下用 bash 写临时文本文件时，`$TMPDIR`（即 bash 侧 `/tmp`）对 native Python 解析为 `C:\tmp\`，该目录通常不存在导致 xunfa.py 报"文件不存在"。必须使用原生 Windows 路径（如 `C:/Users/chengfeng/AppData/Local/hermes/cache/scratch/` 或用户 Desktop 路径）写入临时文件，再将该路径传给 Python 脚本。
