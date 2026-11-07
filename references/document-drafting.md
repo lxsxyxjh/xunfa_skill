@@ -352,6 +352,159 @@ def generate_evidence_docx(out_path, title_text, headers, evidence_data):
     doc.save(out_path)
 ```
 
+#### （4）诉讼证据材料组卷、图片转PDF、全本合并与连续页码加注规程（方案A实战标准）
+1. **证据原件/全本提交红线与后附法条清理**：
+   - 判决书、裁定书、司法鉴定意见书等法定裁决与证明文书在组卷时必须提交全文，绝对严禁提取“首尾页及事实认定页”或局部截取，必须保障文书完整生效力与既判力证据形式；
+   - **后附法条清理红线**：判决书末尾所附的“相关法律条文/附相关法条”不属于裁判正文，组卷时必须彻底剔除（仅提取保留至审判人员、助理及书记员落款页止），避免污染证据页数与造成无效冗余。
+2. **图片材料A4规范化与智能横竖屏识别标准（绝不剪切）**：
+   - 读取凭证图片分辨率 (W, H)，当宽/高 >= 1.15（宽明显大于高，如全国企业信用信息公示系统截图）时，自动判定为横版材料，自适应生成标准 A4 横屏 PDF（宽 841.89 pt × 高 595.27 pt），预留四周 8mm 极小边距等比居中铺满，绝不剪切原图任何像素，高保真还原全国统一系统防伪视觉；
+   - 当高 >= 宽时生成标准 A4 竖屏 PDF（595.27 × 841.89 pt）。横版页面页码自适应放置在横屏右下角。
+3. **自然层级点号命名与双案独立目录**：
+   - 涉多个独立相对方/合同的诉讼案件，必须分别建立独立的案卷子目录（如 `1、李宗亮诉平安产险长沙县支公司`、`2、李宗亮诉众安在线财险`），各自独立成套存放起诉状、回填物理页码的证据目录及合并证据册；
+   - 在各案卷工作目录下，各单项材料转换为独立 PDF 并采用 `1_`、`2.1_`、`2.2_` 自然层级点号前缀命名，确保在文件管理器中按自然顺序绝对对齐；
+   - 按照证据目录顺序，将各单项 PDF 顺序合并为一个总册《证据材料.pdf》，严禁交付任何“无页码原版”等未完成半成品，必须交付唯一成品。
+4. **动态连续页码加注（WPS原生可编辑架构与编码防乱码规程）**：
+   - 提取总合并页数 N；
+   - 逐页自适应获取页面宽高（`page.mediabox.width` / `height`），在每页右下角（距最右 1.0cm 即 28.35pt、距底边 1.36cm 即 38.69pt）绘制纯阿拉伯数字（`1`、`2`、`3`……）；
+   - 字体严格采用仿宋小二号（18pt），无边框、无背景底色，干净整齐。
+   - **底层字符编码铁律（根除乱码死穴）**：页码纯阿拉伯数字属于单字节字符，其字体字典必须采用标准单字节编码（`/Encoding /WinAnsiEncoding`，子类型为 `/Subtype /TrueType`，基础字体 `/BaseFont /SimSun` 或 `/FangSong`，且包含完整的 ASCII `/Widths` 数组与 `/FontDescriptor` 描述符）。绝对严禁手写未嵌入 `/ToUnicode` 映射表的双字节复合字体（如 `/Subtype /Type0` + `/Encoding /UniGB-UCS2-H`）来绘制单字节 ASCII 字符串 `[(1)] TJ`，否则在 WPS/Acrobat 中会强行双字节错位查表解码，错位命中汉字库中的生僻偏旁部首（形似左右反转的 F）或汉字“(特)”！
+   - **WPS 原生可编辑架构注入（彻底支持客户端增删改）**：在每一页内容流末尾注入 `/Artifact <</Contents(页码)/Subtype/Header/Type/Pagination>>BDC ... EMC` 标记，并绑定带有 `/PieceInfo /ADBE_CompoundType`（内含 `<HeaderFooterSettings version="8.0">` XML 流）的 Form XObject。生成的 PDF 在 WPS 客户端中点击【更新页码】或【删除页码】时可原生识别、直接弹窗允许增删改。
+   - **对象流引用覆盖 BUG 防范**：先将所有原始页面添加进 writer，严禁先对 reader.pages 盖印再 add_page，否则同一多页文档的后续页面会被底层对象流引用覆盖导致盖印丢失。
+5. **真实物理页码反向回填闭环（核心法则）**：
+   - 证据材料总册生成完毕后，统计各证据项在总册中的起始与截止物理页码；
+   - 将该真实连续物理页码反向回填更新至证据目录 Word 的“页码”列，重新导出交付，彻底消除“目录页码与材料页码不符”的重大诉讼隐患。
+
+```python
+import os, io, pypdf
+from pypdf.generic import (
+    DictionaryObject, NameObject, TextStringObject, NumberObject,
+    ArrayObject, DecodedStreamObject
+)
+
+def build_wps_native_evidence_pdf(file_paths, out_pdf_path):
+    writer = pypdf.PdfWriter()
+    
+    # 1. 构建标准单字节 TrueType 字体对象 (WinAnsiEncoding 彻底杜绝双字节乱码)
+    fd = DictionaryObject()
+    fd[NameObject('/Type')] = NameObject('/FontDescriptor')
+    fd[NameObject('/FontName')] = NameObject('/SimSun')
+    fd[NameObject('/Flags')] = NumberObject(32)
+    fd[NameObject('/ItalicAngle')] = NumberObject(0)
+    fd[NameObject('/Ascent')] = NumberObject(859)
+    fd[NameObject('/Descent')] = NumberObject(-140)
+    fd[NameObject('/FontBBox')] = ArrayObject([NumberObject(-7), NumberObject(-140), NumberObject(1000), NumberObject(859)])
+    fd[NameObject('/CapHeight')] = NumberObject(683)
+    fd[NameObject('/StemV')] = NumberObject(0)
+    fd_ref = writer._add_object(fd)
+    
+    fnt = DictionaryObject()
+    fnt[NameObject('/Type')] = NameObject('/Font')
+    fnt[NameObject('/Subtype')] = NameObject('/TrueType')
+    fnt[NameObject('/BaseFont')] = NameObject('/SimSun')
+    fnt[NameObject('/Encoding')] = NameObject('/WinAnsiEncoding')
+    fnt[NameObject('/FirstChar')] = NumberObject(32)
+    fnt[NameObject('/LastChar')] = NumberObject(255)
+    fnt[NameObject('/Widths')] = ArrayObject([NumberObject(500)] * 224)
+    fnt[NameObject('/FontDescriptor')] = fd_ref
+    font_ref = writer._add_object(fnt)
+    
+    # 2. 注册 OCG 图层 (Headers/Footers)
+    ocg_obj = DictionaryObject()
+    ocg_obj[NameObject('/Type')] = NameObject('/OCG')
+    ocg_obj[NameObject('/Name')] = TextStringObject('Headers/Footers')
+    ocg_obj[NameObject('/Usage')] = DictionaryObject({
+        NameObject('/PageElement'): DictionaryObject({
+            NameObject('/PageElement'): DictionaryObject({NameObject('/Subtype'): NameObject('/HF')})
+        })
+    })
+    oc_md = DictionaryObject({NameObject('/Type'): NameObject('/OCMD'), NameObject('/OCGs'): writer._add_object(ocg_obj)})
+    oc_md_ref = writer._add_object(oc_md)
+    
+    # 3. 注册 HeaderFooterSettings XML 配置流 (WPS 原生识别核心)
+    doc_settings_xml = (
+        '<?xml version=\"1.0\" encoding=\"UTF-8\" ?>'
+        '<HeaderFooterSettings version = \"8.0\">'
+        '<Font name=\"FangSong\" type=\"Type0\" size=\"18\"/>'
+        '<Color r=\"0\" g=\"0\" b=\"0\"/>'
+        '<Margin top=\"36\" left=\"28.3465\" right=\"28.3465\" bottom=\"56.6929\"/>'
+        '<Appearance shrink=\"0\" fixedprint=\"0\"/>'
+        '<PageRange end=\"-1\" start=\"-1\" even=\"1\" odd=\"1\" />'
+        '<Page offset=\"1\"><PageIndex format=\"1\"/></Page>'
+        '<Date><Month format=\"1\" />/<Day format=\"1\" /><Year format=\"0\" /></Date>'
+        '<Header><Left></Left><Center></Center><Right></Right></Header>'
+        '<Footer><Left></Left><Center></Center><Right><Page offset=\"1\">PageIndex format=\"1\"/></Page></Right></Footer>'
+        '</HeaderFooterSettings>'
+    )
+    doc_settings_stream = DecodedStreamObject()
+    doc_settings_stream.set_data(doc_settings_xml.encode('utf-8'))
+    doc_settings_ref = writer._add_object(doc_settings_stream)
+    
+    # 4. 构建 PieceInfo 字典
+    adbe_dict = DictionaryObject({
+        NameObject('/LastModified'): TextStringObject(\"D:20261108070000--16'00'\"),
+        NameObject('/Private'): NameObject('/Header'),
+        NameObject('/DocSettings'): doc_settings_ref
+    })
+    piece_info_dict = DictionaryObject({NameObject('/ADBE_CompoundType'): adbe_dict})
+    piece_info_ref = writer._add_object(piece_info_dict)
+    
+    # 5. Catalog 级别注入 PieceInfo (/WPS_ICV)
+    wps_icv = DictionaryObject({
+        NameObject('/LastModified'): TextStringObject(\"D:20261108070000--16'00'\"),
+        NameObject('/DocICV'): DictionaryObject({
+            NameObject('/ICV'): TextStringObject('40830DC16C094BABB5C9A81F7BBE55B2_12'),
+            NameObject('/TYPE'): TextStringObject('TEXT')
+        })
+    })
+    writer.root_object[NameObject('/PieceInfo')] = DictionaryObject({NameObject('/WPS_ICV'): writer._add_object(wps_icv)})
+    
+    # 6. 先将所有原始页面完整加载入 writer (避开对象流缓存覆盖 BUG)
+    for fp in file_paths:
+        r = pypdf.PdfReader(fp)
+        for page in r.pages:
+            writer.add_page(page)
+            
+    total_pages = len(writer.pages)
+    
+    # 7. 逐页注入 Form XObject 与 /Artifact 内容流标记
+    for idx in range(total_pages):
+        page = writer.pages[idx]
+        w, h = float(page.mediabox.width), float(page.mediabox.height)
+        page_str = str(idx + 1)
+        text_width = len(page_str) * 9.0
+        x = w - 28.3465 - text_width
+        y = 38.692913 # 约 1.36cm 与 WPS 保持绝对一致
+        
+        form_xobj = DecodedStreamObject()
+        form_xobj[NameObject('/Type')] = NameObject('/XObject')
+        form_xobj[NameObject('/Subtype')] = NameObject('/Form')
+        form_xobj[NameObject('/BBox')] = ArrayObject([NumberObject(0), NumberObject(-4.5), NumberObject(text_width), NumberObject(22.5)])
+        form_xobj[NameObject('/Matrix')] = ArrayObject([NumberObject(1), NumberObject(0), NumberObject(0), NumberObject(1), NumberObject(0), NumberObject(0)])
+        form_xobj[NameObject('/Resources')] = DictionaryObject({NameObject('/Font'): DictionaryObject({NameObject('/KSPF1'): font_ref})})
+        form_xobj[NameObject('/OC')] = oc_md_ref
+        form_xobj[NameObject('/PieceInfo')] = piece_info_ref
+        form_xobj.set_data(f'q\\nBT\\n/KSPF1 18.00 Tf\\n1 0 0 1 0 0  Tm\\n0 0 0 rg\\n[({page_str})] TJ\\nET\\nQ\\n'.encode('latin1'))
+        form_ref = writer._add_object(form_xobj)
+        
+        xobj_name = f'/KSPX{idx + 13}'
+        if '/Resources' not in page:
+            page[NameObject('/Resources')] = DictionaryObject()
+        if '/XObject' not in page['/Resources']:
+            page['/Resources'][NameObject('/XObject')] = DictionaryObject()
+        page['/Resources']['/XObject'][NameObject(xobj_name)] = form_ref
+        
+        artifact_cmd = f'\n/Artifact <</Contents({page_str})/Subtype/Header/Type/Pagination>>BDC\nq\n1 0 0 1 {x:.6f} {y:.6f} cm\n{xobj_name} Do\nQ\nEMC\n'
+        new_content = page.get_contents().get_data() + artifact_cmd.encode('latin1')
+        new_stream = DecodedStreamObject()
+        new_stream.set_data(new_content)
+        # 必须作为间接对象引用注入，严禁直接赋直接对象字典
+        new_stream_ref = writer._add_object(new_stream)
+        page[NameObject('/Contents')] = new_stream_ref
+        
+    with open(out_pdf_path, 'wb') as f_out:
+        writer.write(f_out)
+```
+
 ### 10. 强制执行申请书
 强制执行申请书
 申请人：[姓名/名称]，住所地：[住所地]，统一社会信用代码：[代码]。（自然人按自然人标准格式）
