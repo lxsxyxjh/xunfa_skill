@@ -14,14 +14,17 @@
    - 法条关键词/条号精准检索：`mcp_yuandian_open_platform_yuandian_search_legal_articles`
    - 法律法规自然语言语义检索：`mcp_yuandian_open_platform_yuandian_semantic_search_legal_articles`
    - 法条/法规正文详情查询：`mcp_yuandian_open_platform_yuandian_get_legal_article_detail` / `mcp_yuandian_open_platform_yuandian_get_law_or_regulation_detail`
-   - 法律引用幻觉与时效自动核验：`mcp_yuandian_open_platform_yuandian_hall_detect`（自动抽取文本中引用的法规/法条和案号，核验时效性与原文一致性）。
-3. **查案例（权威案例与类案检索）**：
+   - 法律引用时效与原文核验：优先调用 `mcp_yuandian_open_platform_yuandian_get_legal_article_detail` 核对现行有效条文（注：`hall_detect` 接口需 VIP 权限，日常无需调用）。
+3. **查案例（权威案例与类案检索——绝对红线）**：
    - 权威/指导/典型案例检索：`mcp_yuandian_open_platform_yuandian_search_authoritative_cases`
    - 普通裁判文书检索：`mcp_yuandian_open_platform_yuandian_search_judicial_cases`
    - 案例语义相似度检索：`mcp_yuandian_open_platform_yuandian_semantic_search_cases`
    - 案例详情提取：`mcp_yuandian_open_platform_yuandian_get_case_detail`
-4. **兜底联网检索**：
-   - 当元典库未收录最新特殊规范时，辅以系统内置 `web_search`（Parallel/Exa 环）定向检索最高法官网（court.gov.cn）与国家法律法规数据库（flk.npc.gov.cn）。
+   - **案例来源唯一性与禁搜外网**：真实司法案例只能以元典 MCP 为唯一检索源，严禁使用任何通用联网搜索引擎（如 web_search）查询案例交付用户，严防营销号与自媒体虚假拼接或篡改案例入库信息。
+   - **案号与入库编号准确核实**：引用元典案例必须标明公网（如中国裁判文书网、人民法院案例库官网）可查的真实准确裁判案号，或人民法院案例库官方入库编号（形如 `2024-xx-x-xxx-xxx`），严禁仅交付需 VIP 或登录鉴权的第三方私网链接。
+   - **严格区分层级与零编造**：严禁混淆“人民法院案例库”（固定入库编号）、“最高人民法院指导性案例”（固定称谓“指导案例XX号”）、“最高人民法院公报案例”（载《最高人民法院公报》）与普通典型/解纷案例。元典权威案例库（`authoritative_case_sources`）未收录时，必须如实陈述“经权威库核实暂未收录”，严禁虚构入库标识，严禁强行拼凑。
+4. **法规核验定向辅助（仅限法条原文，不适用于案例）**：
+   - 当元典库未收录最新地方规范或需核验现行最新条文时，可辅以定向检索国家法律法规数据库（flk.npc.gov.cn）或最高人民法院官网（court.gov.cn）核对法条原文。
 
 ## 二、法条引用与核验规范
 
