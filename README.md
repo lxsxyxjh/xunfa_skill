@@ -47,8 +47,7 @@ xunfa_skill/
 │   └── law-retrieval.md              # 法律检索矩阵与法条/案例权威核验规范
 ├── scripts/
 │   ├── xunfa.py                      # 统一 CLI 执行入口
-│   ├── legal_review.py               # 本地规则校验、零篡改修订与 DOCX 导出核心引擎
-│   └── yuandian_mcp.py               # 元典开放平台 MCP 客户端辅助脚本
+│   └── legal_review.py               # 本地规则校验、零篡改修订与 DOCX 导出核心引擎
 └── tests/
     └── test_legal_review.py          # 本地核心引擎单元测试用例
 ```
@@ -99,8 +98,6 @@ python scripts/xunfa.py docx --input corrected.txt --output "民事起诉状.doc
 | 环境变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
 | `DOCX_SERVICE_URL` | `https://xunfakeji.com/file/exportLegalDocx` | 标准法律文书 DOCX 格式化导出服务接口地址 |
-| `YUANDIAN_API_KEY` | *(空)* | 元典开放平台 API Key（亦可使用 `YUANDIAN_TOKEN`） |
-| `YUANDIAN_MCP_URL` | `https://open.chineselaw.com/mcp` | 元典开放平台 MCP 服务接口地址 |
 
 ---
 

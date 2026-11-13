@@ -7,7 +7,7 @@ description: 法律文书起草、审查与诉讼工作流。涉及起诉状、�
 
 用于专业法律文书起草、法律文书审查与修订、法条核验规范控制及标准 Word (DOCX) 导出。技能保留本地规则校验引擎（`scripts/xunfa.py`）与正向引导的法律文书写作、审查体系。
 
-审查与精确替换使用本技能自带的 `scripts/xunfa.py` 脚本；查企业、法条、案例优先调用元典开放平台 MCP（`yuandian-open-platform`）工具集或运行 `scripts/yuandian_mcp.py`。
+审查与精确替换使用本技能自带的 `scripts/xunfa.py` 脚本；查企业、法条、案例必须调用元典开放平台 MCP（`yuandian-open-platform`）工具集。
 
 ## 能力与路由
 
@@ -37,7 +37,8 @@ description: 法律文书起草、审查与诉讼工作流。涉及起诉状、�
    - **文书修订与单份交付工作流**：修改起诉状等法律文书时，直接在本地纯文本（txt）上增删改对应行内容；导出 Word 必须通过 `scripts/xunfa.py docx` 生成，遇多次修改按“（1）”、“（2）”顺次递增后缀排序命名；回复汇报时聚焦修改点（直接说明改了哪里并交付 MEDIA 卡片），无需在聊天中重复刷屏输出全篇代码块，单次聚焦一份文书看效果。
 3. **法律文书检查与修订**：审查合同、协议、诉状、判决书或其他法律文书时，参阅 [法律文书检查](references/document-review.md)，运行 `prepare` 和 `apply` 引擎完成零篡改修订。
 4. **元典 MCP 高效联动与案例检索铁律（绝对红线）**：
-   - 查企业主体用 `yuandian_search_company_pr_095ad592`；核验法条原文用 `yuandian_get_legal_article_detail`（传入 `regulation_name` 与 `article_number`）。禁用需 VIP 权限的 `hall_detect` 接口。
+   - 工具名以当前 agent 实际注册的 MCP 工具列表为准（服务器名 `yuandian-open-platform`，工具名形如 `yuandian_search_companies`、`yuandian_get_legal_article_detail`，不同 agent 的前缀可能不同）：查企业主体用企业检索工具，核验法条原文用法条详情工具（传入 `regulation_name` 与 `article_number`）。禁用需 VIP 权限的 `hall_detect` 接口。
+   - **MCP 不可用时如实告知**：元典 MCP 未连接或调用失败时，直接告知用户企业、法条、案例检索能力暂不可用，严禁改走任何脚本兜底，严禁凭模型记忆默写法条或编造检索结果。
    - **检索数据≠证据（零伪造边界）**：元典 MCP 与联网检索所得的企业工商数据只能用于起诉状等文书正文的当事人信息栏补全，严禁将其转化为自制表格、模拟截图或生成 PDF 充当证据页；证据页只能来自用户提供的原始材料，缺失一律按缺件占位红线生成占位页处理。
    - **案例来源唯一性与禁搜外网**：真实司法案例只能以元典 MCP 为唯一检索源，严禁使用任何通用联网搜索引擎（如 web_search）查询案例交付用户，严防营销号与自媒体虚假拼接或篡改案例入库信息。
    - **案号与入库编号准确核实**：引用元典案例必须标明公网（如中国裁判文书网、人民法院案例库官网）可查的真实准确裁判案号，或人民法院案例库官方入库编号（形如 `2024-xx-x-xxx-xxx`），严禁仅交付需 VIP 或登录鉴权的第三方私网链接。
