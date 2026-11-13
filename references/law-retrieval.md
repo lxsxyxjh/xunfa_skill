@@ -4,7 +4,7 @@
 
 ## 一、元典开放平台 MCP（`yuandian-open-platform`）核心检索矩阵
 
-凡涉及查企业、查法条、查案例、法律幻觉校验，统一优先调用元典 MCP 工具（与本技能共同使用）：
+凡涉及查企业、查法条、查案例、法律幻觉校验，统一优先调用元典 MCP 工具（与本技能共同使用）。工具名前缀以各 agent 实际注册的 MCP 工具列表为准，同一服务器 `yuandian-open-platform` 在不同 agent 中的工具前缀可能不同：
 
 1. **查企业（主体信息与涉诉背景）**：
    - 检索企业候选/获取 ID 与统一社会信用代码：`mcp_yuandian_open_platform_yuandian_search_companies` / `mcp_yuandian_open_platform_yuandian_search_company_profiles_by_name`
