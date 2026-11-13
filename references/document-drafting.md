@@ -37,7 +37,7 @@
 
 5. **法律文书本地规则预检与 Word 默认导出（强约束）**：
    - 起草好文书纯文本并保存为临时 txt 后，先调用本地校验引擎自检：`python scripts/xunfa.py prepare --text-file "<临时txt路径>" --output "<新路径_ctx.json>"`，确认 `itemErrors: 0` 且 `ruleIssues: 0`。
-   - 校验通过后，调用 `python scripts/xunfa.py docx --input "<临时txt路径>" --output "<输出路径>.docx"` 导出标准排版 Word 文档，并通过 `MEDIA:/绝对路径` 交付。
+   - 校验通过后，调用 `python scripts/xunfa.py docx --input "<临时txt路径>" --output "<输出路径>.docx"` 导出标准排版 Word 文档。成品按双落点交付：一份落 agent 宿主工作区根目录（触发客户端文件卡片），一份存档至 `D:\下载为法律文书\`，回复中给出绝对路径。
 
 ## 二、固定文书模板
 
